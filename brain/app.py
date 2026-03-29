@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 OLLAMA_URL = os.environ["OLLAMA_URL"].rstrip("/")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b-q4_K_M")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "homelabsec-classifier")
 
 app = FastAPI(title="HomelabSec Brain")
 

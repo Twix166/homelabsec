@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_URL: postgresql://homelabsec:change-me@postgres:5432/homelabsec
       OLLAMA_URL: http://host.containers.internal:11434
-      OLLAMA_MODEL: qwen3:8b-q4_K_M
+      OLLAMA_MODEL: homelabsec-classifier
     extra_hosts:
       - "host.containers.internal:host-gateway"
     volumes:
