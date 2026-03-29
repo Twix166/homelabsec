@@ -28,6 +28,56 @@ class NmapXmlIngestRequest(BaseModel):
 def utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+def normalize_role(role: str) -> str:
+    if not role:
+        return "unknown"
+
+    r = role.strip().lower().replace(" ", "_").replace("-", "_")
+
+    mapping = {
+        "nas": "nas",
+        "file_server": "nas",
+        "storage": "nas",
+
+        "printer": "printer",
+
+        "camera": "camera",
+        "webcam": "camera",
+        "surveillance_camera": "camera",
+
+        "gateway": "gateway",
+        "router": "gateway",
+
+        "web_server": "web_server",
+        "webserver": "web_server",
+
+        "server": "server",
+        "ssh_server": "server",
+        "ftp_server": "server",
+        "dns_server": "server",
+
+        "workstation": "workstation",
+        "desktop": "workstation",
+        "laptop": "workstation",
+
+        "mobile_device": "mobile_device",
+        "phone": "mobile_device",
+        "tablet": "mobile_device",
+
+        "iot_device": "iot_device",
+        "smart_device": "iot_device",
+
+        "proxy": "proxy",
+
+        "access_point": "access_point",
+        "ap": "access_point",
+
+        "switch": "switch",
+
+        "unknown": "unknown",
+    }
+
+    return mapping.get(r, "unknown")
 
 def get_or_create_asset(
     conn: psycopg.Connection,
@@ -471,7 +521,8 @@ def classify_asset(asset_id: str):
                     "content": (
                         "You are a homelab asset classifier. "
                         "Use only the provided fingerprint. "
-                        "Return strict JSON with keys role and confidence."
+                        "Return strict JSON with keys role and confidence. "
+                        "Role must be a short snake_case label like gateway, nas, printer, web_server, server, switch, access_point, iot_device, workstation, unknown."
                     ),
                 },
                 {
@@ -485,14 +536,32 @@ def classify_asset(asset_id: str):
         r.raise_for_status()
         data = r.json()
 
-        content = data["message"]["content"]
+        content = data.get("message", {}).get("content", "")
+        parsed = None
+        raw_error = None
+
         try:
             parsed = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=500, detail=f"Model returned non-JSON content: {content}") from exc
+        except json.JSONDecodeError:
+            raw_error = content
+            parsed = {
+                "role": "unknown",
+                "confidence": 0.10,
+                "raw_model_output": content
+            }
 
-        role = parsed.get("role")
-        confidence = parsed.get("confidence")
+        role = normalize_role(parsed.get("role", "unknown"))
+        confidence = parsed.get("confidence", 0.10)
+
+        # normalize confidence to float if possible
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError):
+            confidence = 0.10
+
+        # normalize role to string
+        if not isinstance(role, str) or not role.strip():
+            role = "unknown"
 
         with conn.cursor() as cur:
             cur.execute(
@@ -505,8 +574,15 @@ def classify_asset(asset_id: str):
             )
             conn.commit()
 
-    return {"asset_id": asset_id, "classification": parsed, "fingerprint": fp}
-
+    return {
+        "asset_id": asset_id,
+        "classification": {
+            "role": role,
+            "confidence": confidence
+        },
+        "fingerprint": fp,
+        "raw_model_output": raw_error
+    }
 
 @app.get("/report/summary")
 def report_summary():
