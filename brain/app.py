@@ -353,6 +353,187 @@ def fingerprint_hash(fingerprint: dict[str, Any]) -> str:
     canonical = json.dumps(fingerprint, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
+def get_latest_fingerprint(conn: psycopg.Connection, asset_id: str) -> Optional[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT fingerprint_json, fingerprint_hash, created_at
+            FROM fingerprints
+            WHERE asset_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (asset_id,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "fingerprint": row[0],
+        "fingerprint_hash": row[1],
+        "created_at": row[2].isoformat(),
+    }
+
+def get_previous_fingerprint(conn: psycopg.Connection, asset_id: str) -> Optional[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT fingerprint_json, fingerprint_hash, created_at
+            FROM fingerprints
+            WHERE asset_id = %s
+            ORDER BY created_at DESC
+            OFFSET 1
+            LIMIT 1
+            """,
+            (asset_id,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "fingerprint": row[0],
+        "fingerprint_hash": row[1],
+        "created_at": row[2].isoformat(),
+    }
+
+def diff_fingerprints(
+    old_fp: Optional[dict[str, Any]],
+    new_fp: dict[str, Any],
+) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+
+    old_identity = (old_fp or {}).get("identity", {})
+    new_identity = new_fp.get("identity", {})
+
+    old_network = (old_fp or {}).get("network", {})
+    new_network = new_fp.get("network", {})
+
+    old_role = (old_fp or {}).get("role")
+    new_role = new_fp.get("role")
+
+    old_ips = set(old_network.get("ip_addresses", []))
+    new_ips = set(new_network.get("ip_addresses", []))
+
+    old_macs = set(old_network.get("mac_addresses", []))
+    new_macs = set(new_network.get("mac_addresses", []))
+
+    old_ports = {
+        (
+            p.get("port"),
+            p.get("protocol"),
+            p.get("service_name"),
+            p.get("service_product"),
+            p.get("service_version"),
+        )
+        for p in old_network.get("open_ports", [])
+    }
+    new_ports = {
+        (
+            p.get("port"),
+            p.get("protocol"),
+            p.get("service_name"),
+            p.get("service_product"),
+            p.get("service_version"),
+        )
+        for p in new_network.get("open_ports", [])
+    }
+
+    if old_fp is None:
+        changes.append(
+            {
+                "change_type": "new_asset",
+                "severity": "medium",
+                "confidence": 1.0,
+                "old_value": None,
+                "new_value": {
+                    "preferred_name": new_identity.get("preferred_name"),
+                    "ip_addresses": sorted(new_ips),
+                    "mac_addresses": sorted(new_macs),
+                },
+                "evidence": {"source": "fingerprint_diff"},
+            }
+        )
+        return changes
+
+    if old_ips != new_ips:
+        changes.append(
+            {
+                "change_type": "ip_addresses_changed",
+                "severity": "info",
+                "confidence": 0.95,
+                "old_value": sorted(old_ips),
+                "new_value": sorted(new_ips),
+                "evidence": {"source": "fingerprint_diff"},
+            }
+        )
+
+    if old_macs != new_macs:
+        changes.append(
+            {
+                "change_type": "mac_addresses_changed",
+                "severity": "medium",
+                "confidence": 0.95,
+                "old_value": sorted(old_macs),
+                "new_value": sorted(new_macs),
+                "evidence": {"source": "fingerprint_diff"},
+            }
+        )
+
+    for port in sorted(new_ports - old_ports):
+        changes.append(
+            {
+                "change_type": "new_port_opened",
+                "severity": "medium",
+                "confidence": 0.90,
+                "old_value": None,
+                "new_value": {
+                    "port": port[0],
+                    "protocol": port[1],
+                    "service_name": port[2],
+                    "service_product": port[3],
+                    "service_version": port[4],
+                },
+                "evidence": {"source": "fingerprint_diff"},
+            }
+        )
+
+    for port in sorted(old_ports - new_ports):
+        changes.append(
+            {
+                "change_type": "port_closed",
+                "severity": "info",
+                "confidence": 0.90,
+                "old_value": {
+                    "port": port[0],
+                    "protocol": port[1],
+                    "service_name": port[2],
+                    "service_product": port[3],
+                    "service_version": port[4],
+                },
+                "new_value": None,
+                "evidence": {"source": "fingerprint_diff"},
+            }
+        )
+
+    if old_role != new_role:
+        changes.append(
+            {
+                "change_type": "role_changed",
+                "severity": "low",
+                "confidence": 0.80,
+                "old_value": old_role,
+                "new_value": new_role,
+                "evidence": {"source": "fingerprint_diff"},
+            }
+        )
+
+    return changes
+
+
 
 @app.get("/health")
 def health():
@@ -583,6 +764,84 @@ def classify_asset(asset_id: str):
         "fingerprint": fp,
         "raw_model_output": raw_error
     }
+
+@app.get("/fingerprint/{asset_id}")
+def get_fingerprint(asset_id: str):
+    with db() as conn:
+        latest = get_latest_fingerprint(conn, asset_id)
+
+        if latest is None:
+            raise HTTPException(status_code=404, detail="No fingerprint found for asset")
+
+        return {
+            "asset_id": asset_id,
+            "fingerprint_hash": latest["fingerprint_hash"],
+            "created_at": latest["created_at"],
+            "fingerprint": latest["fingerprint"],
+        }
+    
+@app.get("/detect_changes/{asset_id}")
+def detect_changes_for_asset(asset_id: str):
+    with db() as conn:
+        latest = get_latest_fingerprint(conn, asset_id)
+
+        if latest is None:
+            raise HTTPException(status_code=404, detail="No fingerprint found for asset")
+
+        previous = get_previous_fingerprint(conn, asset_id)
+
+        changes = diff_fingerprints(
+            previous["fingerprint"] if previous else None,
+            latest["fingerprint"],
+        )
+
+        return {
+            "asset_id": asset_id,
+            "latest_fingerprint_created_at": latest["created_at"],
+            "previous_fingerprint_created_at": previous["created_at"] if previous else None,
+            "changes": changes,
+        }
+
+@app.get("/detect_changes")
+def detect_changes_all():
+    all_results = []
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT asset_id
+                FROM fingerprints
+                ORDER BY asset_id
+                """
+            )
+            asset_ids = [str(r[0]) for r in cur.fetchall()]
+
+        for asset_id in asset_ids:
+            latest = get_latest_fingerprint(conn, asset_id)
+            if latest is None:
+                continue
+
+            previous = get_previous_fingerprint(conn, asset_id)
+            changes = diff_fingerprints(
+                previous["fingerprint"] if previous else None,
+                latest["fingerprint"],
+            )
+
+            if changes:
+                all_results.append(
+                    {
+                        "asset_id": asset_id,
+                        "latest_fingerprint_created_at": latest["created_at"],
+                        "previous_fingerprint_created_at": previous["created_at"] if previous else None,
+                        "changes": changes,
+                    }
+                )
+
+    return {
+        "assets_with_changes": len(all_results),
+        "results": all_results,
+    }    
 
 @app.get("/report/summary")
 def report_summary():
