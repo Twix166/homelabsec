@@ -51,5 +51,14 @@ services:
     volumes:
       - ../discovery:/data/discovery
 
+  frontend:
+    build: ../frontend
+    container_name: homelabsec-frontend
+    restart: unless-stopped
+    depends_on:
+      - brain
+    ports:
+      - "8080:80"
+
 volumes:
   pgdata:
