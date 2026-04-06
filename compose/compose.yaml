@@ -39,7 +39,7 @@ services:
     container_name: homelabsec-scheduler
     restart: unless-stopped
     environment:
-      API_BASE: http://brain:8088
+      API_BASE: http://127.0.0.1:8088
       TARGET_SUBNET: ${TARGET_SUBNET:-10.0.0.0/24}
       DISCOVERY_INTERVAL_MINUTES: ${DISCOVERY_INTERVAL_MINUTES:-30}
       REPORT_HOUR_UTC: ${REPORT_HOUR_UTC:-8}
