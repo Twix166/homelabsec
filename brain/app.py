@@ -596,15 +596,72 @@ def diff_fingerprints(
 
     return changes
 
+def jsonb_param(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+def change_dedupe_key(asset_id: str, change: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        asset_id,
+        change.get("change_type"),
+        change.get("severity"),
+        change.get("confidence"),
+        jsonb_param(change.get("old_value")),
+        jsonb_param(change.get("new_value")),
+        jsonb_param(change.get("evidence", {})),
+    )
+
 def persist_changes(
     conn: psycopg.Connection,
     asset_id: str,
     changes: list[dict[str, Any]],
 ) -> dict[str, Any]:
     inserted = 0
+    skipped = 0
+    seen_keys: set[tuple[Any, ...]] = set()
 
     with conn.cursor() as cur:
         for change in changes:
+            dedupe_key = change_dedupe_key(asset_id, change)
+            if dedupe_key in seen_keys:
+                skipped += 1
+                continue
+
+            seen_keys.add(dedupe_key)
+
+            old_value_json = dedupe_key[4]
+            new_value_json = dedupe_key[5]
+            evidence_json = dedupe_key[6]
+
+            cur.execute(
+                """
+                SELECT 1
+                FROM changes
+                WHERE asset_id = %s
+                  AND change_type = %s
+                  AND severity = %s
+                  AND confidence = %s
+                  AND old_value IS NOT DISTINCT FROM %s::jsonb
+                  AND new_value IS NOT DISTINCT FROM %s::jsonb
+                  AND evidence IS NOT DISTINCT FROM %s::jsonb
+                LIMIT 1
+                """,
+                (
+                    asset_id,
+                    change.get("change_type"),
+                    change.get("severity"),
+                    change.get("confidence"),
+                    old_value_json,
+                    new_value_json,
+                    evidence_json,
+                ),
+            )
+            if cur.fetchone():
+                skipped += 1
+                continue
+
             cur.execute(
                 """
                 INSERT INTO changes (
@@ -616,16 +673,16 @@ def persist_changes(
                     new_value,
                     evidence
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
                 """,
                 (
                     asset_id,
                     change.get("change_type"),
                     change.get("severity"),
                     change.get("confidence"),
-                    json.dumps(change.get("old_value")) if change.get("old_value") is not None else None,
-                    json.dumps(change.get("new_value")) if change.get("new_value") is not None else None,
-                    json.dumps(change.get("evidence", {})),
+                    old_value_json,
+                    new_value_json,
+                    evidence_json,
                 ),
             )
             inserted += 1
@@ -634,6 +691,7 @@ def persist_changes(
 
     return {
         "inserted": inserted,
+        "skipped": skipped,
     }
 
 def detect_and_persist_changes_for_asset(
