@@ -1,10 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version TEXT PRIMARY KEY,
-    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS assets (
     asset_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     preferred_name TEXT,

@@ -41,6 +41,17 @@ def test_health_endpoint(client):
     assert response.json() == {"status": "ok"}
 
 
+def test_schema_migrations_table_is_initialized(integration_db_url):
+    import psycopg
+
+    with psycopg.connect(integration_db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT version FROM schema_migrations ORDER BY version")
+            versions = [row[0] for row in cur.fetchall()]
+
+    assert "0001_initial" in versions
+
+
 def test_ingest_detect_changes_and_reports_flow(client):
     ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
 

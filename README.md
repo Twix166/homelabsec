@@ -45,11 +45,22 @@ The installer now:
 
 - clones or updates the repository
 - syncs `.env` into `compose/.env`
+- validates Ollama connectivity and model availability
 - starts the stack with `--build`
 - waits for `/health`
 - validates schema readiness through `/report/summary`
 
-If install exits successfully, the API has answered both a basic health check and a schema-dependent query.
+If install exits successfully, Ollama was reachable, the configured model existed, and the API answered both a basic health check and a schema-dependent query.
+
+Installer-related Ollama variables:
+
+```bash
+OLLAMA_HOST_URL=http://localhost:11434
+OLLAMA_MODEL=homelabsec-classifier
+SKIP_OLLAMA_VALIDATION=false
+```
+
+`OLLAMA_HOST_URL` is used by the installer on the host. `OLLAMA_URL` is used by the `brain` container and defaults to `http://host.containers.internal:11434`.
 
 ## Web dashboard
 
@@ -64,7 +75,9 @@ docker compose up -d --build
 
 On a fresh Postgres volume, the database schema is initialized automatically from `brain/init.sql`.
 
-If you already have an existing `pgdata` volume from an older run, the init script will not be re-applied automatically. In that case, either load `brain/init.sql` manually into the existing database or recreate the volume if you do not need to preserve data.
+For ongoing schema changes, HomelabSec now uses versioned SQL migrations from `brain/migrations/` executed by `brain/migrate.py`. The compose stack runs the one-shot `migrate` service before starting `brain`, so existing deployments can be upgraded without recreating the Postgres volume.
+
+The `init.sql` bootstrap remains in place for brand-new Postgres volumes, but it is no longer the only schema path.
 
 Then open:
 
@@ -77,6 +90,30 @@ The frontend proxies API requests internally to the `brain` service, so no backe
 The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`. `brain` waits for Postgres readiness, and the dependent services wait for the API health endpoint before starting.
 
 The `brain` service is now built from `brain/Dockerfile` with pinned Python dependencies in `brain/requirements.txt` instead of installing packages dynamically at container startup.
+
+## Ollama Configuration
+
+Compose now accepts:
+
+```bash
+OLLAMA_URL=http://host.containers.internal:11434
+OLLAMA_MODEL=homelabsec-classifier
+```
+
+During install, HomelabSec validates host-side Ollama access through `OLLAMA_HOST_URL` and confirms the configured `OLLAMA_MODEL` exists via the Ollama tags API.
+
+## Database Migrations
+
+Migration files live in `brain/migrations/` and are applied in filename order.
+
+To run migrations manually:
+
+```bash
+cd compose
+docker compose run --rm migrate
+```
+
+The migration runner records applied versions in the `schema_migrations` table.
 
 ## Testing Plan
 
@@ -131,10 +168,29 @@ STARTUP_DISCOVERY=true
 Additional scheduler tuning variables:
 
 ```bash
+SCHEDULER_API_BASE=http://127.0.0.1:8088
 API_RETRY_ATTEMPTS=5
 API_RETRY_DELAY_SECONDS=5
 STARTUP_API_TIMEOUT_SECONDS=120
 ```
+
+## Scheduler Networking
+
+`network_mode: "host"` is intentionally retained for the scheduler.
+
+Current rationale:
+
+- the scheduler runs `nmap -sS`, which relies on raw-socket scanning semantics tied closely to the network namespace it runs in
+- the target is a LAN subnet, so scanning from the host namespace preserves the expected source address and routing behavior
+- the scheduler currently reaches the API through host loopback via `SCHEDULER_API_BASE`, which defaults to `http://127.0.0.1:8088`
+
+This means the scheduler is currently Linux-host oriented. If host networking is removed in the future, that change should be treated as a networking redesign, not a compose cleanup, because scan behavior and API reachability would both change.
+
+Operational assumptions:
+
+- `nmap -sS` requires raw-socket privileges inside the scheduler container
+- the scheduler should run only on trusted local infrastructure
+- host-network mode should be reviewed again only if the scan model changes, for example moving away from SYN scans or offloading discovery to the host
 
 ## API usage
 

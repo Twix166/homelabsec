@@ -11,6 +11,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = REPO_ROOT / "brain" / "app.py"
+MIGRATE_PATH = REPO_ROOT / "brain" / "migrate.py"
 TEST_COMPOSE_PATH = REPO_ROOT / "compose" / "compose.test.yaml"
 TEST_DB_PORT = 55432
 
@@ -150,5 +151,19 @@ def integration_brain_module(postgres_test_stack, integration_db_url):
             time.sleep(1)
     else:
         raise RuntimeError("Timed out waiting for test Postgres to become ready")
+
+    subprocess.run(
+        ["python3", str(MIGRATE_PATH)],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "DATABASE_URL": integration_db_url,
+            "OLLAMA_URL": "http://ollama.test",
+            "OLLAMA_MODEL": "homelabsec-classifier",
+        },
+    )
 
     return _load_brain_module("brain_app_integration_under_test")

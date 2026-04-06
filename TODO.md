@@ -14,25 +14,17 @@ Status:
 - Postgres init is now wired into compose for fresh volumes.
 - Service healthchecks are in place.
 - `brain` now builds from a Dockerfile with pinned dependencies.
+- Versioned SQL migrations now run through the `migrate` service and `schema_migrations` table.
 
-- Wire Postgres schema initialization into Docker Compose.
-- Add a safe database bootstrap path for `brain/init.sql`.
-- Decide on a migration strategy for future schema changes.
-- Replace the runtime `pip install` in the `brain` service with a proper Docker image build.
-- Pin backend dependencies instead of installing floating latest versions at container start.
-- Add service healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`.
-- Improve startup ordering so the scheduler does not run before the API is reachable.
+- Use the migration framework for future schema changes instead of editing only `init.sql`.
 
 ## Priority 2: Installer Reliability
 
 Status:
 - Installer repo URL mismatch is fixed.
 - Installer now validates API health and schema readiness.
+- Installer now validates Ollama connectivity and configured model availability.
 
-- Fix the repository URL mismatch between `README.md` and `install.sh`.
-- Make install validation fail clearly when the stack is unhealthy.
-- Verify schema readiness as part of install.
-- Verify Ollama connectivity and model availability during install or first-run checks.
 - Make `.env` and `compose/.env` handling less error-prone.
 - Document what the installer guarantees and what still requires manual setup.
 
@@ -40,13 +32,10 @@ Status:
 
 Status:
 - Scheduler now waits for API readiness, retries API calls, and logs job failures without crashing the loop.
+- `network_mode: "host"` has been reviewed and is intentionally retained for LAN `nmap -sS` semantics and host-loopback API access.
+- Scan privilege and host-network assumptions are now documented.
 
-- Add readiness checks and retries around API calls in the scheduler.
 - Decide whether startup should trigger an immediate discovery run.
-- Handle `nmap` failures without silently stalling the schedule loop.
-- Revisit `network_mode: "host"` and confirm it is required.
-- Document scan privilege and host-network assumptions for `nmap -sS`.
-- Add clearer scheduler logs for discovery, ingest, classification, and report outcomes.
 
 ## Priority 4: Backend Maintainability
 

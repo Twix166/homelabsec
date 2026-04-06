@@ -27,8 +27,8 @@ services:
     working_dir: /app
     environment:
       DATABASE_URL: postgresql://homelabsec:change-me@postgres:5432/homelabsec
-      OLLAMA_URL: http://host.containers.internal:11434
-      OLLAMA_MODEL: homelabsec-classifier
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.containers.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-homelabsec-classifier}
     extra_hosts:
       - "host.containers.internal:host-gateway"
     volumes:
@@ -37,6 +37,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -49,13 +51,29 @@ services:
       start_period: 30s
     ports:
       - "8088:8088"
+
+  migrate:
+    image: homelabsec-brain:latest
+    container_name: homelabsec-migrate
+    restart: "no"
+    working_dir: /app
+    command: ["python", "migrate.py"]
+    environment:
+      DATABASE_URL: postgresql://homelabsec:change-me@postgres:5432/homelabsec
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.containers.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-homelabsec-classifier}
+    volumes:
+      - ../brain:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
   
   scheduler:
     build: ../scheduler
     container_name: homelabsec-scheduler
     restart: unless-stopped
     environment:
-      API_BASE: http://127.0.0.1:8088
+      API_BASE: ${SCHEDULER_API_BASE:-http://127.0.0.1:8088}
       TARGET_SUBNET: ${TARGET_SUBNET:-10.0.0.0/24}
       DISCOVERY_INTERVAL_MINUTES: ${DISCOVERY_INTERVAL_MINUTES:-30}
       REPORT_HOUR_UTC: ${REPORT_HOUR_UTC:-8}

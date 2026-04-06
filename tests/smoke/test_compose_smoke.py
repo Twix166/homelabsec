@@ -38,14 +38,19 @@ def _wait_for_http(url: str, timeout_seconds: int = 120):
 def _wait_for_services_healthy(project_name: str, timeout_seconds: int = 180):
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        result = _run_compose(project_name, "ps", "--format", "json")
+        result = _run_compose(project_name, "ps", "-a", "--format", "json")
         raw_output = result.stdout.strip()
         if raw_output.startswith("["):
             services = json.loads(raw_output)
         else:
             services = [json.loads(line) for line in raw_output.splitlines() if line.strip()]
 
-        if services and all(service.get("Health") == "healthy" for service in services):
+        def service_ready(service):
+            if service.get("Service") == "migrate":
+                return service.get("State") == "exited" and service.get("ExitCode") == 0
+            return service.get("Health") == "healthy"
+
+        if services and all(service_ready(service) for service in services):
             return services
 
         time.sleep(3)
@@ -64,7 +69,7 @@ def test_compose_stack_reaches_healthy_state():
         _wait_for_http("http://127.0.0.1:18080/")
 
         service_names = {service["Service"] for service in services}
-        assert {"postgres", "brain", "scheduler", "frontend"}.issubset(service_names)
+        assert {"postgres", "migrate", "brain", "scheduler", "frontend"}.issubset(service_names)
     finally:
         subprocess.run(
             [

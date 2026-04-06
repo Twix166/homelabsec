@@ -6,6 +6,7 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/homelabsec}"
 BRANCH="${BRANCH:-main}"
 API_BASE_URL="${API_BASE_URL:-http://localhost:8088}"
 WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-180}"
+SKIP_OLLAMA_VALIDATION="${SKIP_OLLAMA_VALIDATION:-false}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -34,6 +35,15 @@ sync_env_file() {
   if [[ -f .env ]]; then
     log "Syncing .env into compose/.env"
     cp .env compose/.env
+  fi
+}
+
+load_env_file() {
+  if [[ -f .env ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env
+    set +a
   fi
 }
 
@@ -67,6 +77,39 @@ validate_api_schema() {
     echo "Error: API schema validation returned an unexpected payload: $payload" >&2
     return 1
   }
+}
+
+validate_ollama() {
+  if [[ "${SKIP_OLLAMA_VALIDATION}" =~ ^(1|true|yes|on)$ ]]; then
+    log "Skipping Ollama validation"
+    return 0
+  fi
+
+  local ollama_host_url="${OLLAMA_HOST_URL:-http://localhost:11434}"
+  local ollama_model="${OLLAMA_MODEL:-homelabsec-classifier}"
+  local tags_url="${ollama_host_url%/}/api/tags"
+  local payload
+
+  log "Validating Ollama connectivity at ${ollama_host_url}"
+  if ! payload="$(curl -fsS "$tags_url")"; then
+    echo "Error: could not reach Ollama at $ollama_host_url" >&2
+    echo "Make sure the Ollama service is running and reachable, or set SKIP_OLLAMA_VALIDATION=true if you want to defer this check." >&2
+    return 1
+  fi
+
+  printf '%s\n' "$payload" | grep -q "\"name\":\"${ollama_model}" || {
+    echo "Error: Ollama is reachable but model '$ollama_model' was not found." >&2
+    echo "Install or pull the model, then re-run the installer." >&2
+    echo "Example: ollama pull $ollama_model" >&2
+    return 1
+  }
+
+  log "Ollama model '$ollama_model' is available"
+}
+
+run_migrations() {
+  log "Running database migrations"
+  $COMPOSE_CMD run --rm migrate
 }
 
 log "Checking prerequisites"
@@ -105,13 +148,21 @@ if [[ ! -f .env && -f .env.example ]]; then
   cp .env.example .env
 fi
 
+load_env_file
+
 mkdir -p discovery/raw
 
 sync_env_file
 
+validate_ollama
+
 log "Starting containers"
 cd compose
-$COMPOSE_CMD up -d --build
+$COMPOSE_CMD up -d --build postgres
+
+run_migrations
+
+$COMPOSE_CMD up -d --build brain scheduler frontend
 
 log "Waiting for API health"
 wait_for_http "${API_BASE_URL}/health" "API health endpoint"
@@ -136,6 +187,6 @@ Next steps:
   1. Edit $INSTALL_DIR/.env if needed
   2. Re-run:
        cd $INSTALL_DIR/compose && $COMPOSE_CMD up -d --build
-  3. Review README.md for scheduler and scanning setup
+  3. Review README.md for scheduler, scanning, and Ollama setup
 
 EOF
