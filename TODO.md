@@ -10,6 +10,11 @@ This file tracks the highest-value follow-up work for making HomelabSec more rel
 
 ## Priority 1: Deployment and Bootstrap Gaps
 
+Status:
+- Postgres init is now wired into compose for fresh volumes.
+- Service healthchecks are in place.
+- `brain` now builds from a Dockerfile with pinned dependencies.
+
 - Wire Postgres schema initialization into Docker Compose.
 - Add a safe database bootstrap path for `brain/init.sql`.
 - Decide on a migration strategy for future schema changes.
@@ -20,6 +25,10 @@ This file tracks the highest-value follow-up work for making HomelabSec more rel
 
 ## Priority 2: Installer Reliability
 
+Status:
+- Installer repo URL mismatch is fixed.
+- Installer now validates API health and schema readiness.
+
 - Fix the repository URL mismatch between `README.md` and `install.sh`.
 - Make install validation fail clearly when the stack is unhealthy.
 - Verify schema readiness as part of install.
@@ -28,6 +37,9 @@ This file tracks the highest-value follow-up work for making HomelabSec more rel
 - Document what the installer guarantees and what still requires manual setup.
 
 ## Priority 3: Scheduler Hardening
+
+Status:
+- Scheduler now waits for API readiness, retries API calls, and logs job failures without crashing the loop.
 
 - Add readiness checks and retries around API calls in the scheduler.
 - Decide whether startup should trigger an immediate discovery run.
@@ -53,6 +65,10 @@ This file tracks the highest-value follow-up work for making HomelabSec more rel
 - Add log collection and basic observability guidance.
 
 ## Priority 6: Testing and Verification
+
+Status:
+- Unit, integration, regression, and compose smoke coverage are now in place.
+- CI now runs the test suite on push and pull request.
 
 - Add API smoke tests for health, ingest, classification, change detection, and daily report flows.
 - Add compose-level verification steps that confirm the stack boots cleanly.

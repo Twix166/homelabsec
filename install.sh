@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/Twix16/homelabsec.git}"
+REPO_URL="${REPO_URL:-https://github.com/Twix166/homelabsec.git}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/homelabsec}"
 BRANCH="${BRANCH:-main}"
+API_BASE_URL="${API_BASE_URL:-http://localhost:8088}"
+WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-180}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -26,6 +28,45 @@ detect_compose() {
     return
   fi
   echo ""
+}
+
+sync_env_file() {
+  if [[ -f .env ]]; then
+    log "Syncing .env into compose/.env"
+    cp .env compose/.env
+  fi
+}
+
+wait_for_http() {
+  local url="$1"
+  local label="$2"
+  local deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
+
+  while (( SECONDS < deadline )); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      log "$label is ready"
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Error: timed out waiting for $label at $url" >&2
+  return 1
+}
+
+validate_api_schema() {
+  local summary_url="${API_BASE_URL}/report/summary"
+  local payload
+
+  if ! payload="$(curl -fsS "$summary_url")"; then
+    echo "Error: API schema validation failed at $summary_url" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$payload" | grep -q '"assets"' || {
+    echo "Error: API schema validation returned an unexpected payload: $payload" >&2
+    return 1
+  }
 }
 
 log "Checking prerequisites"
@@ -66,20 +107,17 @@ fi
 
 mkdir -p discovery/raw
 
-if [[ ! -f compose/.env && -f .env ]]; then
-  log "Copying .env into compose/.env for docker compose"
-  cp .env compose/.env
-fi
+sync_env_file
 
 log "Starting containers"
 cd compose
-$COMPOSE_CMD up -d
+$COMPOSE_CMD up -d --build
 
-log "Waiting briefly for services"
-sleep 5
+log "Waiting for API health"
+wait_for_http "${API_BASE_URL}/health" "API health endpoint"
 
-log "Health check"
-curl -fsS http://localhost:8088/health || true
+log "Validating schema-dependent API endpoint"
+validate_api_schema
 
 cat <<EOF
 
@@ -92,12 +130,12 @@ Useful commands:
   cd $INSTALL_DIR/compose
   $COMPOSE_CMD ps
   $COMPOSE_CMD logs -f brain
-  curl http://localhost:8088/health
+  curl ${API_BASE_URL}/health
 
 Next steps:
   1. Edit $INSTALL_DIR/.env if needed
   2. Re-run:
-       cd $INSTALL_DIR/compose && $COMPOSE_CMD up -d
+       cd $INSTALL_DIR/compose && $COMPOSE_CMD up -d --build
   3. Review README.md for scheduler and scanning setup
 
 EOF

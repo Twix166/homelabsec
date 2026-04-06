@@ -41,6 +41,16 @@ You can install directly from GitHub with:
 curl -fsSL https://raw.githubusercontent.com/Twix166/homelabsec/main/install.sh | bash
 ```
 
+The installer now:
+
+- clones or updates the repository
+- syncs `.env` into `compose/.env`
+- starts the stack with `--build`
+- waits for `/health`
+- validates schema readiness through `/report/summary`
+
+If install exits successfully, the API has answered both a basic health check and a schema-dependent query.
+
 ## Web dashboard
 
 A read-only web dashboard is available from the `frontend` service on port `8080`.
@@ -65,6 +75,8 @@ http://localhost:8080
 The frontend proxies API requests internally to the `brain` service, so no backend changes are required.
 
 The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`. `brain` waits for Postgres readiness, and the dependent services wait for the API health endpoint before starting.
+
+The `brain` service is now built from `brain/Dockerfile` with pinned Python dependencies in `brain/requirements.txt` instead of installing packages dynamically at container startup.
 
 ## Testing Plan
 
@@ -107,6 +119,22 @@ python3 -m pytest tests/smoke
 ```
 
 The smoke suite starts the full compose stack with remapped ports on `18080`, `18088`, and `15432`, waits for healthchecks to pass, verifies the API and frontend respond, and then tears the stack down.
+
+## Scheduler Behavior
+
+The scheduler now waits for API readiness at startup, retries API calls, logs per-job failures without crashing the loop, and supports optional immediate discovery with:
+
+```bash
+STARTUP_DISCOVERY=true
+```
+
+Additional scheduler tuning variables:
+
+```bash
+API_RETRY_ATTEMPTS=5
+API_RETRY_DELAY_SECONDS=5
+STARTUP_API_TIMEOUT_SECONDS=120
+```
 
 ## API usage
 
