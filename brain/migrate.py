@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import psycopg
 
+from brainlib.config import DATABASE_URL
 
-DATABASE_URL = os.environ["DATABASE_URL"]
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 

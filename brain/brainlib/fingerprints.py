@@ -452,6 +452,17 @@ def detect_and_persist_changes_for_asset(
         previous["fingerprint"] if previous else None,
         latest["fingerprint"],
     )
+    evidence = {
+        "source": "fingerprint_diff",
+        "latest_fingerprint_hash": latest["fingerprint_hash"],
+        "previous_fingerprint_hash": previous["fingerprint_hash"] if previous else None,
+    }
+    for change in changes:
+        base_evidence = change.get("evidence", {})
+        change["evidence"] = {
+            **evidence,
+            **base_evidence,
+        }
     persist_result = persist_changes(conn, asset_id, changes)
 
     return {

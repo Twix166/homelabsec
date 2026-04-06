@@ -41,12 +41,14 @@ Status:
 
 Status:
 - `app.py` remains the stable FastAPI entrypoint, and core helper logic has been extracted into internal modules under `brain/brainlib`.
+- Database lookup and common API error paths are now more centralized.
+- Ingest input validation and external dependency failures now return explicit API errors instead of generic server failures.
+- Change persistence now dedupes per fingerprint transition, so repeated detection runs stay idempotent while recurring changes can still be recorded after a later state change.
+- Runtime tuning and fallback values are now routed through `brain/brainlib/config.py`.
+- Reporting queries and serializers are now extracted from `app.py` into a dedicated internal module.
 
 - Split the monolithic FastAPI app into smaller modules without changing endpoint behavior.
-- Centralize database connection handling and error paths.
-- Add validation around ingest inputs and external dependency failures.
-- Review classification and change-detection code for idempotency and duplicate persistence edge cases.
-- Add a consistent configuration layer for environment variables.
+- Continue splitting the monolithic FastAPI app into smaller modules without changing endpoint behavior.
 
 ## Priority 5: Security and Operations
 

@@ -1,20 +1,24 @@
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
 
-import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
-from brainlib.assets import get_or_create_asset, normalize_role, parse_nmap_xml
-from brainlib.config import OLLAMA_MODEL, OLLAMA_URL, utcnow_iso
-from brainlib.database import db
+from brainlib.assets import NmapXmlError, get_or_create_asset, normalize_role, parse_nmap_xml
+from brainlib.config import (
+    CLASSIFICATION_FALLBACK_CONFIDENCE,
+    CLASSIFICATION_FALLBACK_ROLE,
+    FINGERPRINTS_LIST_LIMIT,
+    OBSERVATIONS_LIST_LIMIT,
+)
+from brainlib.database import asset_exists, db
+from brainlib.errors import bad_gateway, bad_request, not_found
 from brainlib.fingerprints import (
     build_fingerprint,
     detect_and_persist_changes_for_asset,
@@ -25,6 +29,8 @@ from brainlib.fingerprints import (
     persist_changes,
     store_fingerprint_if_changed,
 )
+from brainlib.ollama import OllamaError, chat_json
+from brainlib.reports import daily_report, summary_report
 
 app = FastAPI(title="HomelabSec Brain")
 
@@ -41,24 +47,22 @@ def health():
 
 @app.post("/ollama/test")
 def ollama_test() -> dict[str, Any]:
-    payload = {
-        "model": OLLAMA_MODEL,
-        "format": "json",
-        "stream": False,
-        "messages": [
-            {
-                "role": "system",
-                "content": "Return strict JSON only with keys role and confidence.",
-            },
-            {
-                "role": "user",
-                "content": "Classify a host with ports 22, 80, 443 and nginx detected.",
-            },
-        ],
-    }
-    r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120)
-    r.raise_for_status()
-    data = r.json()
+    try:
+        data = chat_json(
+            [
+                {
+                    "role": "system",
+                    "content": "Return strict JSON only with keys role and confidence.",
+                },
+                {
+                    "role": "user",
+                    "content": "Classify a host with ports 22, 80, 443 and nginx detected.",
+                },
+            ]
+        )
+    except OllamaError as exc:
+        raise bad_gateway(str(exc)) from exc
+
     content = data["message"]["content"]
     try:
         parsed = json.loads(content)
@@ -69,10 +73,12 @@ def ollama_test() -> dict[str, Any]:
 
 @app.post("/ingest/nmap_xml")
 def ingest_nmap_xml(req: NmapXmlIngestRequest):
-    if not os.path.exists(req.xml_path):
-        raise HTTPException(status_code=404, detail="XML file not found")
-
-    parsed_hosts = parse_nmap_xml(req.xml_path)
+    try:
+        parsed_hosts = parse_nmap_xml(req.xml_path)
+    except FileNotFoundError as exc:
+        raise not_found("XML file not found") from exc
+    except NmapXmlError as exc:
+        raise bad_request(str(exc)) from exc
     inserted = 0
 
     with db() as conn:
@@ -201,8 +207,9 @@ def list_observations():
                 FROM network_observations o
                 LEFT JOIN assets a ON a.asset_id = o.asset_id
                 ORDER BY o.observed_at DESC, o.observation_id DESC
-                LIMIT 200
-                """
+                LIMIT %s
+                """,
+                (OBSERVATIONS_LIST_LIMIT,),
             )
             rows = cur.fetchall()
 
@@ -243,8 +250,9 @@ def list_fingerprints():
                 FROM fingerprints f
                 JOIN assets a ON a.asset_id = f.asset_id
                 ORDER BY f.created_at DESC, f.fingerprint_id DESC
-                LIMIT 200
-                """
+                LIMIT %s
+                """,
+                (FINGERPRINTS_LIST_LIMIT,),
             )
             rows = cur.fetchall()
 
@@ -266,32 +274,30 @@ def list_fingerprints():
 @app.post("/classify/{asset_id}")
 def classify_asset(asset_id: str):
     with db() as conn:
+        if not asset_exists(conn, asset_id):
+            raise not_found("Asset not found")
+
         fp = build_fingerprint(conn, asset_id)
-
-        payload = {
-            "model": OLLAMA_MODEL,
-            "format": "json",
-            "stream": False,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a homelab asset classifier. "
-                        "Use only the provided fingerprint. "
-                        "Return strict JSON with keys role and confidence. "
-                        "Role must be a short snake_case label like gateway, nas, printer, web_server, server, switch, access_point, iot_device, workstation, unknown."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"Fingerprint: {json.dumps(fp)}",
-                },
-            ],
-        }
-
-        r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120)
-        r.raise_for_status()
-        data = r.json()
+        try:
+            data = chat_json(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a homelab asset classifier. "
+                            "Use only the provided fingerprint. "
+                            "Return strict JSON with keys role and confidence. "
+                            "Role must be a short snake_case label like gateway, nas, printer, web_server, server, switch, access_point, iot_device, workstation, unknown."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Fingerprint: {json.dumps(fp)}",
+                    },
+                ]
+            )
+        except OllamaError as exc:
+            raise bad_gateway(str(exc)) from exc
 
         content = data.get("message", {}).get("content", "")
         parsed = None
@@ -302,23 +308,23 @@ def classify_asset(asset_id: str):
         except json.JSONDecodeError:
             raw_error = content
             parsed = {
-                "role": "unknown",
-                "confidence": 0.10,
-                "raw_model_output": content
+                "role": CLASSIFICATION_FALLBACK_ROLE,
+                "confidence": CLASSIFICATION_FALLBACK_CONFIDENCE,
+                "raw_model_output": content,
             }
 
-        role = normalize_role(parsed.get("role", "unknown"))
-        confidence = parsed.get("confidence", 0.10)
+        role = normalize_role(parsed.get("role", CLASSIFICATION_FALLBACK_ROLE))
+        confidence = parsed.get("confidence", CLASSIFICATION_FALLBACK_CONFIDENCE)
 
         # normalize confidence to float if possible
         try:
             confidence = float(confidence)
         except (TypeError, ValueError):
-            confidence = 0.10
+            confidence = CLASSIFICATION_FALLBACK_CONFIDENCE
 
         # normalize role to string
         if not isinstance(role, str) or not role.strip():
-            role = "unknown"
+            role = CLASSIFICATION_FALLBACK_ROLE
 
         with conn.cursor() as cur:
             cur.execute(
@@ -352,7 +358,7 @@ def get_fingerprint(asset_id: str):
         latest = get_latest_fingerprint(conn, asset_id)
 
         if latest is None:
-            raise HTTPException(status_code=404, detail="No fingerprint found for asset")
+            raise not_found("No fingerprint found for asset")
 
         return {
             "asset_id": asset_id,
@@ -364,10 +370,13 @@ def get_fingerprint(asset_id: str):
 @app.get("/detect_changes/{asset_id}")
 def detect_changes_for_asset(asset_id: str):
     with db() as conn:
+        if not asset_exists(conn, asset_id):
+            raise not_found("Asset not found")
+
         latest = get_latest_fingerprint(conn, asset_id)
 
         if latest is None:
-            raise HTTPException(status_code=404, detail="No fingerprint found for asset")
+            raise not_found("No fingerprint found for asset")
 
         result = detect_and_persist_changes_for_asset(conn, asset_id)
         return result
@@ -400,141 +409,12 @@ def detect_changes_all():
 @app.get("/report/daily")
 def report_daily():
     with db() as conn:
-        with conn.cursor() as cur:
-            # recent changes
-            cur.execute(
-                """
-                SELECT
-                    c.change_id,
-                    c.asset_id,
-                    a.preferred_name,
-                    a.role,
-                    c.change_type,
-                    c.severity,
-                    c.confidence,
-                    c.old_value,
-                    c.new_value,
-                    c.detected_at
-                FROM changes c
-                JOIN assets a ON a.asset_id = c.asset_id
-                WHERE c.detected_at >= now() - interval '1 day'
-                ORDER BY
-                    CASE c.severity
-                        WHEN 'critical' THEN 5
-                        WHEN 'high' THEN 4
-                        WHEN 'medium' THEN 3
-                        WHEN 'low' THEN 2
-                        ELSE 1
-                    END DESC,
-                    c.detected_at DESC
-                """
-            )
-            recent_changes_rows = cur.fetchall()
-
-            # recently seen assets
-            cur.execute(
-                """
-                SELECT
-                    asset_id,
-                    preferred_name,
-                    role,
-                    role_confidence,
-                    first_seen,
-                    last_seen
-                FROM assets
-                WHERE last_seen >= now() - interval '1 day'
-                ORDER BY last_seen DESC
-                """
-            )
-            recent_assets_rows = cur.fetchall()
-
-            # unknown / weakly classified assets
-            cur.execute(
-                """
-                SELECT
-                    asset_id,
-                    preferred_name,
-                    role,
-                    role_confidence,
-                    last_seen
-                FROM assets
-                WHERE role IS NULL
-                   OR role = 'unknown'
-                   OR role_confidence IS NULL
-                   OR role_confidence < 0.60
-                ORDER BY last_seen DESC
-                LIMIT 20
-                """
-            )
-            notable_assets_rows = cur.fetchall()
-
-    recent_changes = [
-        {
-            "change_id": str(r[0]),
-            "asset_id": str(r[1]),
-            "preferred_name": r[2],
-            "role": r[3],
-            "change_type": r[4],
-            "severity": r[5],
-            "confidence": float(r[6]) if r[6] is not None else None,
-            "old_value": r[7],
-            "new_value": r[8],
-            "detected_at": r[9].isoformat(),
-        }
-        for r in recent_changes_rows
-    ]
-
-    recent_assets = [
-        {
-            "asset_id": str(r[0]),
-            "preferred_name": r[1],
-            "role": r[2],
-            "role_confidence": float(r[3]) if r[3] is not None else None,
-            "first_seen": r[4].isoformat(),
-            "last_seen": r[5].isoformat(),
-        }
-        for r in recent_assets_rows
-    ]
-
-    notable_assets = [
-        {
-            "asset_id": str(r[0]),
-            "preferred_name": r[1],
-            "role": r[2],
-            "role_confidence": float(r[3]) if r[3] is not None else None,
-            "last_seen": r[4].isoformat(),
-        }
-        for r in notable_assets_rows
-    ]
-
-    summary = {
-        "report_generated_at": utcnow_iso(),
-        "recent_change_count": len(recent_changes),
-        "recent_asset_count": len(recent_assets),
-        "notable_asset_count": len(notable_assets),
-        "recent_changes": recent_changes,
-        "recent_assets": recent_assets,
-        "notable_assets": notable_assets,
-    }
-
-    return summary
+        return daily_report(conn)
 
 @app.get("/report/summary")
 def report_summary():
     with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT count(*) FROM assets")
-            assets = cur.fetchone()[0]
-            cur.execute("SELECT count(*) FROM network_observations")
-            observations = cur.fetchone()[0]
-            cur.execute("SELECT count(*) FROM fingerprints")
-            fingerprints = cur.fetchone()[0]
-
-    return {
-        "assets": assets,
-        "network_observations": observations,
-        "fingerprints": fingerprints,
-    }
+        return summary_report(conn)
 
 @app.post("/classify_all")
 def classify_all():

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Any, Optional
 
 import psycopg
+
+
+class NmapXmlError(ValueError):
+    pass
 
 
 def normalize_role(role: str) -> str:
@@ -170,7 +175,19 @@ def get_or_create_asset(
 
 
 def parse_nmap_xml(xml_path: str) -> list[dict[str, Any]]:
-    tree = ET.parse(xml_path)
+    path = Path(xml_path)
+    if not path.exists():
+        raise FileNotFoundError(xml_path)
+    if not path.is_file():
+        raise NmapXmlError("XML path must point to a file")
+
+    try:
+        tree = ET.parse(path)
+    except ET.ParseError as exc:
+        raise NmapXmlError(f"Invalid Nmap XML: {exc}") from exc
+    except OSError as exc:
+        raise NmapXmlError(f"Unable to read XML file: {exc}") from exc
+
     root = tree.getroot()
     hosts: list[dict[str, Any]] = []
 

@@ -46,6 +46,12 @@ POSTGRES_PASSWORD=change-me
 OLLAMA_URL=http://host.containers.internal:11434
 OLLAMA_HOST_URL=http://localhost:11434
 OLLAMA_MODEL=homelabsec-classifier
+OLLAMA_TIMEOUT_SECONDS=120
+CLASSIFICATION_FALLBACK_ROLE=unknown
+CLASSIFICATION_FALLBACK_CONFIDENCE=0.10
+OBSERVATIONS_LIST_LIMIT=200
+FINGERPRINTS_LIST_LIMIT=200
+NOTABLE_ASSET_LIMIT=20
 SCHEDULER_API_BASE=http://127.0.0.1:8088
 ```
 
@@ -120,9 +126,14 @@ Compose now accepts:
 ```bash
 OLLAMA_URL=http://host.containers.internal:11434
 OLLAMA_MODEL=homelabsec-classifier
+OLLAMA_TIMEOUT_SECONDS=120
+CLASSIFICATION_FALLBACK_ROLE=unknown
+CLASSIFICATION_FALLBACK_CONFIDENCE=0.10
 ```
 
 During install, HomelabSec validates host-side Ollama access through `OLLAMA_HOST_URL` and confirms the configured `OLLAMA_MODEL` exists via the Ollama tags API.
+
+If Ollama is unreachable or returns an invalid transport response, the classification endpoints now fail with `502` instead of a generic `500`. If the model returns non-JSON content, the API keeps the existing soft-fallback behavior and stores an `unknown` classification with `raw_model_output` included in the response.
 
 ## Database Migrations
 
@@ -165,6 +176,13 @@ python3 -m pytest tests/integration
 
 The integration suite starts an isolated Postgres test container on port `55432`, loads the schema from `brain/init.sql`, and runs the FastAPI app in-process. Ollama is mocked in the classification integration tests so the results stay deterministic.
 
+Integration coverage also locks down:
+
+- invalid and missing ingest XML paths
+- missing-asset `404` behavior on classification and change detection
+- `502` handling when Ollama is unreachable
+- idempotent change persistence for the same fingerprint transition
+
 Run the regression tests for the frontend-backed API contract:
 
 ```bash
@@ -177,7 +195,7 @@ Run the compose smoke test:
 python3 -m pytest tests/smoke
 ```
 
-The smoke suite starts the full compose stack with remapped ports on `18080`, `18088`, and `15432`, waits for healthchecks to pass, verifies the API and frontend respond, and then tears the stack down.
+The smoke suite starts the full compose stack with temporary remapped host ports chosen at runtime, waits for healthchecks to pass, verifies the API and frontend respond, and then tears the stack down.
 
 ## Scheduler Behavior
 

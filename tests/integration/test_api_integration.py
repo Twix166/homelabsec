@@ -1,10 +1,12 @@
 from pathlib import Path
 
 import pytest
+import requests
 from fastapi.testclient import TestClient
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "nmap_single_host.xml"
+INVALID_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "nmap_invalid.xml"
 
 
 @pytest.fixture
@@ -31,7 +33,21 @@ def mock_ollama(integration_brain_module, monkeypatch):
         assert json["model"] == "homelabsec-classifier"
         return FakeResponse()
 
-    monkeypatch.setattr(integration_brain_module.requests, "post", fake_post)
+    monkeypatch.setattr("brainlib.ollama.requests.post", fake_post)
+
+
+def test_ingest_missing_file_returns_404(client):
+    response = client.post("/ingest/nmap_xml", json={"xml_path": "/tmp/does-not-exist.xml"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "XML file not found"
+
+
+def test_ingest_invalid_xml_returns_400(client):
+    response = client.post("/ingest/nmap_xml", json={"xml_path": str(INVALID_FIXTURE_PATH)})
+
+    assert response.status_code == 400
+    assert "Invalid Nmap XML" in response.json()["detail"]
 
 
 def test_health_endpoint(client):
@@ -41,7 +57,7 @@ def test_health_endpoint(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_schema_migrations_table_is_initialized(integration_db_url):
+def test_schema_migrations_table_is_initialized(integration_brain_module, integration_db_url):
     import psycopg
 
     with psycopg.connect(integration_db_url) as conn:
@@ -130,3 +146,61 @@ def test_classify_endpoints_with_mocked_ollama(client, mock_ollama):
     assert detect_single_response.status_code == 200
     change_types = {change["change_type"] for change in detect_single_response.json()["changes"]}
     assert "role_changed" in change_types
+
+
+def test_classify_missing_asset_returns_404(client, mock_ollama):
+    response = client.post("/classify/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Asset not found"
+
+
+def test_detect_changes_missing_asset_returns_404(client):
+    response = client.get("/detect_changes/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Asset not found"
+
+
+def test_classify_returns_502_when_ollama_is_unreachable(client, integration_brain_module, monkeypatch):
+    ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
+    assert ingest_response.status_code == 200
+
+    asset_id = client.get("/assets").json()["assets"][0]["asset_id"]
+
+    def fake_post(url, json, timeout):
+        raise requests.ConnectionError("connection refused")
+
+    monkeypatch.setattr("brainlib.ollama.requests.post", fake_post)
+
+    response = client.post(f"/classify/{asset_id}")
+
+    assert response.status_code == 502
+    assert "Ollama request failed" in response.json()["detail"]
+
+
+def test_detect_changes_is_idempotent_for_same_fingerprint_pair(client, integration_db_url):
+    import psycopg
+
+    ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
+    assert ingest_response.status_code == 200
+
+    first_response = client.get("/detect_changes")
+    assert first_response.status_code == 200
+    assert first_response.json()["assets_with_changes"] == 1
+
+    with psycopg.connect(integration_db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM changes")
+            after_first_count = cur.fetchone()[0]
+
+    second_response = client.get("/detect_changes")
+    assert second_response.status_code == 200
+    assert second_response.json()["assets_with_changes"] == 1
+
+    with psycopg.connect(integration_db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM changes")
+            after_second_count = cur.fetchone()[0]
+
+    assert after_second_count == after_first_count
