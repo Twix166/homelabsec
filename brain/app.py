@@ -603,7 +603,9 @@ def report_summary():
 
 @app.post("/classify_all")
 def classify_all():
-    results = []
+    ok = 0
+    errors = 0
+    failed = []
 
     with db() as conn:
         with conn.cursor() as cur:
@@ -618,20 +620,18 @@ def classify_all():
 
     for asset_id in asset_ids:
         try:
-            result = classify_asset(asset_id)
-            results.append({
-                "asset_id": asset_id,
-                "status": "ok",
-                "classification": result.get("classification"),
-            })
+            classify_asset(asset_id)
+            ok += 1
         except Exception as exc:
-            results.append({
+            errors += 1
+            failed.append({
                 "asset_id": asset_id,
-                "status": "error",
                 "error": str(exc),
             })
 
     return {
         "total_assets": len(asset_ids),
-        "results": results,
+        "classified_ok": ok,
+        "errors": errors,
+        "failed": failed,
     }
