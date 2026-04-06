@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: homelabsec
+      POSTGRES_USER: homelabsec
+      POSTGRES_PASSWORD: change-me
+    ports:
+      - "55432:5432"
+    volumes:
+      - test-pgdata:/var/lib/postgresql/data
+      - ../brain/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U homelabsec -d homelabsec"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  test-pgdata:
