@@ -537,7 +537,16 @@ def diff_fingerprints(
             }
         )
 
-    for port in sorted(new_ports - old_ports):
+    def _port_sort_key(port_tuple):
+        return (
+            port_tuple[0] if port_tuple[0] is not None else -1,
+            str(port_tuple[1] or ""),
+            str(port_tuple[2] or ""),
+            str(port_tuple[3] or ""),
+            str(port_tuple[4] or ""),
+        )
+
+    for port in sorted(new_ports - old_ports, key=_port_sort_key):
         changes.append(
             {
                 "change_type": "new_port_opened",
@@ -555,7 +564,7 @@ def diff_fingerprints(
             }
         )
 
-    for port in sorted(old_ports - new_ports):
+    for port in sorted(old_ports - new_ports, key=_port_sort_key):
         changes.append(
             {
                 "change_type": "port_closed",
@@ -593,63 +602,13 @@ def persist_changes(
     changes: list[dict[str, Any]],
 ) -> dict[str, Any]:
     inserted = 0
-    skipped = 0
 
-    # latest scan_run_id for this asset from fingerprints/network observations
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT scan_run_id
-            FROM fingerprints
-            WHERE asset_id = %s
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (asset_id,),
-        )
-        row = cur.fetchone()
-
-        if not row:
-            return {"inserted": 0, "skipped": 0}
-
-        scan_run_id = row[0]
-
         for change in changes:
-            change_type = change.get("change_type")
-            old_value = change.get("old_value")
-            new_value = change.get("new_value")
-
-            # de-dup by same asset + same scan + same change_type + same values
-            cur.execute(
-                """
-                SELECT change_id
-                FROM changes
-                WHERE asset_id = %s
-                  AND scan_run_id = %s
-                  AND change_type = %s
-                  AND COALESCE(old_value, 'null'::jsonb) = COALESCE(%s::jsonb, 'null'::jsonb)
-                  AND COALESCE(new_value, 'null'::jsonb) = COALESCE(%s::jsonb, 'null'::jsonb)
-                LIMIT 1
-                """,
-                (
-                    asset_id,
-                    scan_run_id,
-                    change_type,
-                    json.dumps(old_value) if old_value is not None else None,
-                    json.dumps(new_value) if new_value is not None else None,
-                ),
-            )
-            existing = cur.fetchone()
-
-            if existing:
-                skipped += 1
-                continue
-
             cur.execute(
                 """
                 INSERT INTO changes (
                     asset_id,
-                    scan_run_id,
                     change_type,
                     severity,
                     confidence,
@@ -657,14 +616,13 @@ def persist_changes(
                     new_value,
                     evidence
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     asset_id,
-                    scan_run_id,
                     change.get("change_type"),
-                    change.get("severity", "info"),
-                    change.get("confidence", 0.5),
+                    change.get("severity"),
+                    change.get("confidence"),
                     json.dumps(change.get("old_value")) if change.get("old_value") is not None else None,
                     json.dumps(change.get("new_value")) if change.get("new_value") is not None else None,
                     json.dumps(change.get("evidence", {})),
@@ -672,9 +630,11 @@ def persist_changes(
             )
             inserted += 1
 
-        conn.commit()
+    conn.commit()
 
-    return {"inserted": inserted, "skipped": skipped}
+    return {
+        "inserted": inserted,
+    }
 
 def detect_and_persist_changes_for_asset(
     conn: psycopg.Connection,
