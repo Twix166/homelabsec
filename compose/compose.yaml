@@ -33,6 +33,23 @@ services:
       - postgres
     ports:
       - "8088:8088"
+  
+  scheduler:
+    build: ../scheduler
+    container_name: homelabsec-scheduler
+    restart: unless-stopped
+    environment:
+      API_BASE: http://brain:8088
+      TARGET_SUBNET: ${TARGET_SUBNET:-10.0.0.0/24}
+      DISCOVERY_INTERVAL_MINUTES: ${DISCOVERY_INTERVAL_MINUTES:-30}
+      REPORT_HOUR_UTC: ${REPORT_HOUR_UTC:-8}
+      DISCOVERY_DIR: /data/discovery/raw
+      TOP_PORTS: ${TOP_PORTS:-100}
+    depends_on:
+      - brain
+    network_mode: "host"
+    volumes:
+      - ../discovery:/data/discovery
 
 volumes:
   pgdata:
