@@ -587,6 +587,127 @@ def diff_fingerprints(
 
     return changes
 
+def persist_changes(
+    conn: psycopg.Connection,
+    asset_id: str,
+    changes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    inserted = 0
+    skipped = 0
+
+    # latest scan_run_id for this asset from fingerprints/network observations
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT scan_run_id
+            FROM fingerprints
+            WHERE asset_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (asset_id,),
+        )
+        row = cur.fetchone()
+
+        if not row:
+            return {"inserted": 0, "skipped": 0}
+
+        scan_run_id = row[0]
+
+        for change in changes:
+            change_type = change.get("change_type")
+            old_value = change.get("old_value")
+            new_value = change.get("new_value")
+
+            # de-dup by same asset + same scan + same change_type + same values
+            cur.execute(
+                """
+                SELECT change_id
+                FROM changes
+                WHERE asset_id = %s
+                  AND scan_run_id = %s
+                  AND change_type = %s
+                  AND COALESCE(old_value, 'null'::jsonb) = COALESCE(%s::jsonb, 'null'::jsonb)
+                  AND COALESCE(new_value, 'null'::jsonb) = COALESCE(%s::jsonb, 'null'::jsonb)
+                LIMIT 1
+                """,
+                (
+                    asset_id,
+                    scan_run_id,
+                    change_type,
+                    json.dumps(old_value) if old_value is not None else None,
+                    json.dumps(new_value) if new_value is not None else None,
+                ),
+            )
+            existing = cur.fetchone()
+
+            if existing:
+                skipped += 1
+                continue
+
+            cur.execute(
+                """
+                INSERT INTO changes (
+                    asset_id,
+                    scan_run_id,
+                    change_type,
+                    severity,
+                    confidence,
+                    old_value,
+                    new_value,
+                    evidence
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    asset_id,
+                    scan_run_id,
+                    change.get("change_type"),
+                    change.get("severity", "info"),
+                    change.get("confidence", 0.5),
+                    json.dumps(change.get("old_value")) if change.get("old_value") is not None else None,
+                    json.dumps(change.get("new_value")) if change.get("new_value") is not None else None,
+                    json.dumps(change.get("evidence", {})),
+                ),
+            )
+            inserted += 1
+
+        conn.commit()
+
+    return {"inserted": inserted, "skipped": skipped}
+
+def detect_and_persist_changes_for_asset(
+    conn: psycopg.Connection,
+    asset_id: str,
+) -> dict[str, Any]:
+    latest = get_latest_fingerprint(conn, asset_id)
+
+    if latest is None:
+        return {
+            "asset_id": asset_id,
+            "latest_fingerprint_created_at": None,
+            "previous_fingerprint_created_at": None,
+            "changes": [],
+            "persist_result": {"inserted": 0, "skipped": 0},
+        }
+
+    previous = get_previous_fingerprint(conn, asset_id)
+
+    changes = diff_fingerprints(
+        previous["fingerprint"] if previous else None,
+        latest["fingerprint"],
+    )
+
+    persist_result = persist_changes(conn, asset_id, changes)
+
+    return {
+        "asset_id": asset_id,
+        "latest_fingerprint_created_at": latest["created_at"],
+        "previous_fingerprint_created_at": previous["created_at"] if previous else None,
+        "changes": changes,
+        "persist_result": persist_result,
+    }
+
 
 
 @app.get("/health")
@@ -840,19 +961,8 @@ def detect_changes_for_asset(asset_id: str):
         if latest is None:
             raise HTTPException(status_code=404, detail="No fingerprint found for asset")
 
-        previous = get_previous_fingerprint(conn, asset_id)
-
-        changes = diff_fingerprints(
-            previous["fingerprint"] if previous else None,
-            latest["fingerprint"],
-        )
-
-        return {
-            "asset_id": asset_id,
-            "latest_fingerprint_created_at": latest["created_at"],
-            "previous_fingerprint_created_at": previous["created_at"] if previous else None,
-            "changes": changes,
-        }
+        result = detect_and_persist_changes_for_asset(conn, asset_id)
+        return result
 
 @app.get("/detect_changes")
 def detect_changes_all():
@@ -870,30 +980,136 @@ def detect_changes_all():
             asset_ids = [str(r[0]) for r in cur.fetchall()]
 
         for asset_id in asset_ids:
-            latest = get_latest_fingerprint(conn, asset_id)
-            if latest is None:
-                continue
-
-            previous = get_previous_fingerprint(conn, asset_id)
-            changes = diff_fingerprints(
-                previous["fingerprint"] if previous else None,
-                latest["fingerprint"],
-            )
-
-            if changes:
-                all_results.append(
-                    {
-                        "asset_id": asset_id,
-                        "latest_fingerprint_created_at": latest["created_at"],
-                        "previous_fingerprint_created_at": previous["created_at"] if previous else None,
-                        "changes": changes,
-                    }
-                )
+            result = detect_and_persist_changes_for_asset(conn, asset_id)
+            if result["changes"]:
+                all_results.append(result)
 
     return {
         "assets_with_changes": len(all_results),
         "results": all_results,
-    }    
+    }
+
+@app.get("/report/daily")
+def report_daily():
+    with db() as conn:
+        with conn.cursor() as cur:
+            # recent changes
+            cur.execute(
+                """
+                SELECT
+                    c.change_id,
+                    c.asset_id,
+                    a.preferred_name,
+                    a.role,
+                    c.change_type,
+                    c.severity,
+                    c.confidence,
+                    c.old_value,
+                    c.new_value,
+                    c.detected_at
+                FROM changes c
+                JOIN assets a ON a.asset_id = c.asset_id
+                WHERE c.detected_at >= now() - interval '1 day'
+                ORDER BY
+                    CASE c.severity
+                        WHEN 'critical' THEN 5
+                        WHEN 'high' THEN 4
+                        WHEN 'medium' THEN 3
+                        WHEN 'low' THEN 2
+                        ELSE 1
+                    END DESC,
+                    c.detected_at DESC
+                """
+            )
+            recent_changes_rows = cur.fetchall()
+
+            # recently seen assets
+            cur.execute(
+                """
+                SELECT
+                    asset_id,
+                    preferred_name,
+                    role,
+                    role_confidence,
+                    first_seen,
+                    last_seen
+                FROM assets
+                WHERE last_seen >= now() - interval '1 day'
+                ORDER BY last_seen DESC
+                """
+            )
+            recent_assets_rows = cur.fetchall()
+
+            # unknown / weakly classified assets
+            cur.execute(
+                """
+                SELECT
+                    asset_id,
+                    preferred_name,
+                    role,
+                    role_confidence,
+                    last_seen
+                FROM assets
+                WHERE role IS NULL
+                   OR role = 'unknown'
+                   OR role_confidence IS NULL
+                   OR role_confidence < 0.60
+                ORDER BY last_seen DESC
+                LIMIT 20
+                """
+            )
+            notable_assets_rows = cur.fetchall()
+
+    recent_changes = [
+        {
+            "change_id": str(r[0]),
+            "asset_id": str(r[1]),
+            "preferred_name": r[2],
+            "role": r[3],
+            "change_type": r[4],
+            "severity": r[5],
+            "confidence": float(r[6]) if r[6] is not None else None,
+            "old_value": r[7],
+            "new_value": r[8],
+            "detected_at": r[9].isoformat(),
+        }
+        for r in recent_changes_rows
+    ]
+
+    recent_assets = [
+        {
+            "asset_id": str(r[0]),
+            "preferred_name": r[1],
+            "role": r[2],
+            "role_confidence": float(r[3]) if r[3] is not None else None,
+            "first_seen": r[4].isoformat(),
+            "last_seen": r[5].isoformat(),
+        }
+        for r in recent_assets_rows
+    ]
+
+    notable_assets = [
+        {
+            "asset_id": str(r[0]),
+            "preferred_name": r[1],
+            "role": r[2],
+            "role_confidence": float(r[3]) if r[3] is not None else None,
+            "last_seen": r[4].isoformat(),
+        }
+        for r in notable_assets_rows
+    ]
+
+    summary = {
+        "report_generated_at": utcnow_iso(),
+        "recent_change_count": len(recent_changes),
+        "recent_asset_count": len(recent_assets),
+        "notable_asset_count": len(notable_assets),
+        "recent_changes": recent_changes,
+        "recent_assets": recent_assets,
+        "notable_assets": notable_assets,
+    }
+
+    return summary
 
 @app.get("/report/summary")
 def report_summary():
@@ -935,10 +1151,12 @@ def classify_all():
             ok += 1
         except Exception as exc:
             errors += 1
-            failed.append({
-                "asset_id": asset_id,
-                "error": str(exc),
-            })
+            failed.append(
+                {
+                    "asset_id": asset_id,
+                    "error": str(exc),
+                }
+            )
 
     return {
         "total_assets": len(asset_ids),
