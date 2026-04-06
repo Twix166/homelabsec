@@ -3,6 +3,8 @@ const endpoints = {
   summary: "/api/report/summary",
   daily: "/api/report/daily",
   assets: "/api/assets",
+  observations: "/api/observations",
+  fingerprints: "/api/fingerprints",
 };
 
 const elements = {
@@ -12,11 +14,26 @@ const elements = {
   statObservations: document.getElementById("stat-observations"),
   statFingerprints: document.getElementById("stat-fingerprints"),
   statChanges: document.getElementById("stat-changes"),
+  summaryAssets: document.getElementById("summary-assets"),
+  summaryObservations: document.getElementById("summary-observations"),
+  summaryFingerprints: document.getElementById("summary-fingerprints"),
+  summaryChanges: document.getElementById("summary-changes"),
+  detailTitle: document.getElementById("detail-title"),
+  detailDescription: document.getElementById("detail-description"),
+  detailList: document.getElementById("detail-list"),
   recentChanges: document.getElementById("recent-changes"),
   notableAssets: document.getElementById("notable-assets"),
   assetsTable: document.getElementById("assets-table"),
   refreshButton: document.getElementById("refresh-button"),
   emptyTemplate: document.getElementById("empty-state-template"),
+};
+
+const dashboardState = {
+  assets: [],
+  observations: [],
+  fingerprints: [],
+  changes: [],
+  activeSummary: "assets",
 };
 
 function escapeHtml(value) {
@@ -147,6 +164,120 @@ function renderAssetsTable(assets) {
     .join("");
 }
 
+function renderDetailCards(items, renderItem, emptyMessage) {
+  if (!items.length) {
+    setEmptyState(elements.detailList, emptyMessage);
+    return;
+  }
+
+  elements.detailList.innerHTML = items.map(renderItem).join("");
+}
+
+function renderSummaryDetail(summaryKey) {
+  dashboardState.activeSummary = summaryKey;
+
+  if (summaryKey === "assets") {
+    elements.detailTitle.textContent = "Total assets";
+    elements.detailDescription.textContent = "Current asset inventory ordered by last seen.";
+    renderDetailCards(
+      dashboardState.assets,
+      (asset) => `
+        <article class="list-card">
+          <div class="list-topline">
+            <div class="list-title">${escapeHtml(asset.preferred_name || "Unnamed asset")}</div>
+            <span class="pill">${escapeHtml(asset.role || "unknown")}</span>
+          </div>
+          <div class="list-meta">
+            <span>Confidence ${escapeHtml(formatConfidence(asset.role_confidence))}</span>
+            <span>First seen ${escapeHtml(formatDate(asset.first_seen))}</span>
+            <span>Last seen ${escapeHtml(formatDate(asset.last_seen))}</span>
+          </div>
+          <div class="list-meta mono">
+            <span>${escapeHtml(asset.asset_id)}</span>
+          </div>
+        </article>
+      `,
+      "No assets available."
+    );
+    return;
+  }
+
+  if (summaryKey === "observations") {
+    elements.detailTitle.textContent = "Observations";
+    elements.detailDescription.textContent = "Recent network observations ordered by observed time.";
+    renderDetailCards(
+      dashboardState.observations,
+      (observation) => `
+        <article class="list-card">
+          <div class="list-topline">
+            <div class="list-title">${escapeHtml(observation.preferred_name || observation.ip_address || "Unassigned observation")}</div>
+            <span class="pill">${escapeHtml(observation.service_name || "observation")}</span>
+          </div>
+          <div class="list-meta">
+            <span>${escapeHtml(observation.ip_address || "no_ip")}</span>
+            <span>${escapeHtml(observation.protocol || "-")}${observation.port ? `/${escapeHtml(observation.port)}` : ""}</span>
+            <span>${escapeHtml(observation.service_product || observation.os_guess || "-")}</span>
+            <span>${escapeHtml(formatDate(observation.observed_at))}</span>
+          </div>
+          <div class="list-meta mono">
+            <span>${escapeHtml(observation.observation_id)}</span>
+          </div>
+        </article>
+      `,
+      "No observations available."
+    );
+    return;
+  }
+
+  if (summaryKey === "fingerprints") {
+    elements.detailTitle.textContent = "Fingerprints";
+    elements.detailDescription.textContent = "Recent stored fingerprints ordered by creation time.";
+    renderDetailCards(
+      dashboardState.fingerprints,
+      (fingerprint) => `
+        <article class="list-card">
+          <div class="list-topline">
+            <div class="list-title">${escapeHtml(fingerprint.preferred_name || "Unnamed asset")}</div>
+            <span class="pill">${escapeHtml(fingerprint.role || "unknown")}</span>
+          </div>
+          <div class="list-meta">
+            <span>${escapeHtml(formatDate(fingerprint.created_at))}</span>
+            <span>Asset ${escapeHtml(fingerprint.asset_id)}</span>
+          </div>
+          <div class="list-meta mono">
+            <span>${escapeHtml(fingerprint.fingerprint_hash)}</span>
+          </div>
+        </article>
+      `,
+      "No fingerprints available."
+    );
+    return;
+  }
+
+  elements.detailTitle.textContent = "24h changes";
+  elements.detailDescription.textContent = "Detected changes from the last 24 hours.";
+  renderDetailCards(
+    dashboardState.changes,
+    (change) => `
+      <article class="list-card">
+        <div class="list-topline">
+          <div class="list-title">${escapeHtml(change.preferred_name || "Unnamed asset")}</div>
+          <span class="pill ${severityClass(change.severity)}">${escapeHtml(change.severity || "info")}</span>
+        </div>
+        <div class="list-meta">
+          <span>${escapeHtml(change.change_type || "unknown_change")}</span>
+          <span>${escapeHtml(change.role || "unknown")}</span>
+          <span>${escapeHtml(formatDate(change.detected_at))}</span>
+        </div>
+        <div class="list-meta mono">
+          <span>${escapeHtml(change.asset_id)}</span>
+        </div>
+      </article>
+    `,
+    "No recent changes in the last 24 hours."
+  );
+}
+
 async function fetchJson(url) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -160,12 +291,19 @@ async function loadDashboard() {
   elements.refreshButton.textContent = "Refreshing";
 
   try {
-    const [health, summary, daily, assets] = await Promise.all([
+    const [health, summary, daily, assets, observations, fingerprints] = await Promise.all([
       fetchJson(endpoints.health),
       fetchJson(endpoints.summary),
       fetchJson(endpoints.daily),
       fetchJson(endpoints.assets),
+      fetchJson(endpoints.observations),
+      fetchJson(endpoints.fingerprints),
     ]);
+
+    dashboardState.assets = assets.assets || [];
+    dashboardState.observations = observations.observations || [];
+    dashboardState.fingerprints = fingerprints.fingerprints || [];
+    dashboardState.changes = daily.recent_changes || [];
 
     elements.healthStatus.textContent = health.status || "ok";
     elements.reportGenerated.textContent = formatDate(daily.report_generated_at);
@@ -174,12 +312,16 @@ async function loadDashboard() {
     elements.statFingerprints.textContent = summary.fingerprints ?? "-";
     elements.statChanges.textContent = daily.recent_change_count ?? "-";
 
-    renderRecentChanges(daily.recent_changes || []);
+    renderRecentChanges(dashboardState.changes);
     renderNotableAssets(daily.notable_assets || []);
-    renderAssetsTable(assets.assets || []);
+    renderAssetsTable(dashboardState.assets);
+    renderSummaryDetail(dashboardState.activeSummary);
   } catch (error) {
     elements.healthStatus.textContent = "error";
     elements.reportGenerated.textContent = "-";
+    elements.detailTitle.textContent = "Detail view";
+    elements.detailDescription.textContent = "Click a summary card to list the underlying items.";
+    setEmptyState(elements.detailList, `Failed to load detail data: ${error.message}`);
     setEmptyState(elements.recentChanges, `Failed to load dashboard: ${error.message}`);
     setEmptyState(elements.notableAssets, "Dashboard data unavailable.");
     renderAssetsTable([]);
@@ -191,6 +333,22 @@ async function loadDashboard() {
 
 elements.refreshButton.addEventListener("click", () => {
   loadDashboard();
+});
+
+elements.summaryAssets.addEventListener("click", () => {
+  renderSummaryDetail("assets");
+});
+
+elements.summaryObservations.addEventListener("click", () => {
+  renderSummaryDetail("observations");
+});
+
+elements.summaryFingerprints.addEventListener("click", () => {
+  renderSummaryDetail("fingerprints");
+});
+
+elements.summaryChanges.addEventListener("click", () => {
+  renderSummaryDetail("changes");
 });
 
 loadDashboard();

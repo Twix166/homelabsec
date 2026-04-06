@@ -4,9 +4,9 @@ services:
     container_name: homelabsec-smoke-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: homelabsec
-      POSTGRES_USER: homelabsec
-      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: ${POSTGRES_DB:-homelabsec}
+      POSTGRES_USER: ${POSTGRES_USER:-homelabsec}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
       - smoke-pgdata:/var/lib/postgresql/data
       - ../brain/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
     working_dir: /app
     environment:
-      DATABASE_URL: postgresql://homelabsec:change-me@postgres:5432/homelabsec
+      DATABASE_URL: postgresql://${POSTGRES_USER:-homelabsec}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-homelabsec}
       OLLAMA_URL: ${OLLAMA_URL:-http://host.containers.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-homelabsec-classifier}
     extra_hosts:
@@ -59,7 +59,7 @@ services:
     working_dir: /app
     command: ["python", "migrate.py"]
     environment:
-      DATABASE_URL: postgresql://homelabsec:change-me@postgres:5432/homelabsec
+      DATABASE_URL: postgresql://${POSTGRES_USER:-homelabsec}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-homelabsec}
       OLLAMA_URL: ${OLLAMA_URL:-http://host.containers.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-homelabsec-classifier}
     volumes:

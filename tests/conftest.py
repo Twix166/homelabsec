@@ -12,6 +12,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = REPO_ROOT / "brain" / "app.py"
 MIGRATE_PATH = REPO_ROOT / "brain" / "migrate.py"
+BRAIN_DIR = APP_PATH.parent
 TEST_COMPOSE_PATH = REPO_ROOT / "compose" / "compose.test.yaml"
 TEST_DB_PORT = 55432
 
@@ -75,6 +76,8 @@ def _install_stub_modules():
 
 def _load_brain_module(module_name: str):
     _reset_modules([module_name])
+    if str(BRAIN_DIR) not in sys.path:
+        sys.path.insert(0, str(BRAIN_DIR))
     os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
     os.environ.setdefault("OLLAMA_URL", "http://ollama.test")
     os.environ.setdefault("OLLAMA_MODEL", "homelabsec-classifier")

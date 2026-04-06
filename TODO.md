@@ -39,6 +39,9 @@ Status:
 
 ## Priority 4: Backend Maintainability
 
+Status:
+- `app.py` remains the stable FastAPI entrypoint, and core helper logic has been extracted into internal modules under `brain/brainlib`.
+
 - Split the monolithic FastAPI app into smaller modules without changing endpoint behavior.
 - Centralize database connection handling and error paths.
 - Add validation around ingest inputs and external dependency failures.
@@ -47,7 +50,9 @@ Status:
 
 ## Priority 5: Security and Operations
 
-- Remove hardcoded secrets from compose defaults.
+Status:
+- Postgres secrets are now env-driven instead of being embedded directly in compose service definitions.
+
 - Define the supported trust model for LAN-only versus exposed deployments.
 - Add guidance for TLS and authentication if the product is accessed beyond a trusted local network.
 - Add Postgres backup and restore instructions.

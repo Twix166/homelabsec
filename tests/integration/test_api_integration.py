@@ -72,6 +72,19 @@ def test_ingest_detect_changes_and_reports_flow(client):
     assert fingerprint_payload["asset_id"] == asset_id
     assert fingerprint_payload["fingerprint"]["network"]["ip_addresses"] == ["10.0.0.10"]
 
+    observations_response = client.get("/observations")
+    assert observations_response.status_code == 200
+    observations = observations_response.json()["observations"]
+    assert len(observations) == 1
+    assert observations[0]["asset_id"] == asset_id
+    assert observations[0]["ip_address"] == "10.0.0.10"
+
+    fingerprints_response = client.get("/fingerprints")
+    assert fingerprints_response.status_code == 200
+    fingerprints = fingerprints_response.json()["fingerprints"]
+    assert len(fingerprints) >= 1
+    assert fingerprints[0]["asset_id"] == asset_id
+
     detect_response = client.get("/detect_changes")
     assert detect_response.status_code == 200
     detect_payload = detect_response.json()

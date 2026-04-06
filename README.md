@@ -33,6 +33,24 @@ This repo is at the stage where it can:
 - Ollama running locally on the host
 - An installed classifier model such as `homelabsec-classifier`
 
+## Configuration
+
+Copy `.env.example` to `.env` and change secrets before exposing the stack beyond a local trusted environment.
+
+Important variables:
+
+```bash
+POSTGRES_DB=homelabsec
+POSTGRES_USER=homelabsec
+POSTGRES_PASSWORD=change-me
+OLLAMA_URL=http://host.containers.internal:11434
+OLLAMA_HOST_URL=http://localhost:11434
+OLLAMA_MODEL=homelabsec-classifier
+SCHEDULER_API_BASE=http://127.0.0.1:8088
+```
+
+`compose/compose.yaml` now reads Postgres credentials from env variables instead of embedding them directly in the file.
+
 ## Quick install
 
 You can install directly from GitHub with:
@@ -62,6 +80,8 @@ SKIP_OLLAMA_VALIDATION=false
 
 `OLLAMA_HOST_URL` is used by the installer on the host. `OLLAMA_URL` is used by the `brain` container and defaults to `http://host.containers.internal:11434`.
 
+The installer copies `.env` into `compose/.env` so compose reads the same credentials and runtime settings.
+
 ## Web dashboard
 
 A read-only web dashboard is available from the `frontend` service on port `8080`.
@@ -86,6 +106,8 @@ http://localhost:8080
 ```
 
 The frontend proxies API requests internally to the `brain` service, so no backend changes are required.
+
+The summary cards on the dashboard are clickable. Selecting `Total assets`, `Observations`, `Fingerprints`, or `24h changes` opens a detail list for that category in the dashboard.
 
 The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`. `brain` waits for Postgres readiness, and the dependent services wait for the API health endpoint before starting.
 
