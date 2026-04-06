@@ -24,9 +24,10 @@ Status:
 - Installer repo URL mismatch is fixed.
 - Installer now validates API health and schema readiness.
 - Installer now validates Ollama connectivity and configured model availability.
+- Installer now treats repo-root `.env` as the source of truth and explicitly runs compose with that env file.
+- Installer guarantees and remaining manual setup are now documented.
 
-- Make `.env` and `compose/.env` handling less error-prone.
-- Document what the installer guarantees and what still requires manual setup.
+- Add deeper validation only if the installer later takes on more host-level responsibilities than compose startup and API readiness.
 
 ## Priority 3: Scheduler Hardening
 
@@ -34,8 +35,8 @@ Status:
 - Scheduler now waits for API readiness, retries API calls, and logs job failures without crashing the loop.
 - `network_mode: "host"` has been reviewed and is intentionally retained for LAN `nmap -sS` semantics and host-loopback API access.
 - Scan privilege and host-network assumptions are now documented.
-
-- Decide whether startup should trigger an immediate discovery run.
+- Startup discovery is now an explicit documented opt-in; default startup remains non-scanning unless `STARTUP_DISCOVERY=true`.
+- Scheduler logging is now structured for easier compose-log consumption.
 
 ## Priority 4: Backend Maintainability
 
@@ -46,6 +47,9 @@ Status:
 - Change persistence now dedupes per fingerprint transition, so repeated detection runs stay idempotent while recurring changes can still be recorded after a later state change.
 - Runtime tuning and fallback values are now routed through `brain/brainlib/config.py`.
 - Reporting queries and serializers are now extracted from `app.py` into a dedicated internal module.
+- Classification route logic is now extracted from `app.py` into a dedicated internal module.
+- Ingest parsing and persistence logic is now extracted from `app.py` into a dedicated internal module.
+- Change-detection route orchestration is now extracted from `app.py` into a dedicated internal module.
 
 - Split the monolithic FastAPI app into smaller modules without changing endpoint behavior.
 - Continue splitting the monolithic FastAPI app into smaller modules without changing endpoint behavior.
@@ -54,11 +58,14 @@ Status:
 
 Status:
 - Postgres secrets are now env-driven instead of being embedded directly in compose service definitions.
+- The supported trust model is now documented as trusted-LAN/local-admin use by default.
+- TLS/auth guidance for exposed deployments is now documented.
+- Postgres backup and restore guidance is now documented.
+- Basic log and observability guidance is now documented.
+- `brain`, `scheduler`, and `migrate` now emit structured JSON logs to stdout.
 
-- Define the supported trust model for LAN-only versus exposed deployments.
-- Add guidance for TLS and authentication if the product is accessed beyond a trusted local network.
-- Add Postgres backup and restore instructions.
-- Add log collection and basic observability guidance.
+- Add production-grade auth/TLS implementation if exposed deployment becomes a product requirement.
+- Add metrics if operational depth beyond compose logs is needed.
 
 ## Priority 6: Testing and Verification
 

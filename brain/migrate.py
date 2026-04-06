@@ -5,8 +5,10 @@ from pathlib import Path
 import psycopg
 
 from brainlib.config import DATABASE_URL
+from brainlib.logging_utils import configure_logging, log_event
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+logger = configure_logging("homelabsec.migrate")
 
 
 def ensure_migrations_table(conn: psycopg.Connection) -> None:
@@ -43,7 +45,7 @@ def apply_migration(conn: psycopg.Connection, path: Path) -> None:
             (version,),
         )
     conn.commit()
-    print(f"Applied migration: {version}", flush=True)
+    log_event(logger, "info", "migration_applied", "Applied migration", version=version)
 
 
 def main() -> None:
@@ -53,7 +55,7 @@ def main() -> None:
 
         for path in migration_files():
             if path.stem in existing_versions:
-                print(f"Skipping migration: {path.stem}", flush=True)
+                log_event(logger, "info", "migration_skipped", "Skipping migration", version=path.stem)
                 continue
             apply_migration(conn, path)
 

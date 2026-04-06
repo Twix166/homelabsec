@@ -1,9 +1,11 @@
 import json
+import time
 import sys
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi import Request
 from pydantic import BaseModel
 
 APP_DIR = Path(__file__).resolve().parent
@@ -11,32 +13,49 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 from brainlib.assets import NmapXmlError, get_or_create_asset, normalize_role, parse_nmap_xml
-from brainlib.config import (
-    CLASSIFICATION_FALLBACK_CONFIDENCE,
-    CLASSIFICATION_FALLBACK_ROLE,
-    FINGERPRINTS_LIST_LIMIT,
-    OBSERVATIONS_LIST_LIMIT,
-)
-from brainlib.database import asset_exists, db
+from brainlib.changes import detect_changes_all as detect_changes_all_records
+from brainlib.changes import detect_changes_for_asset as detect_changes_for_asset_record
+from brainlib.classification import classify_all_assets, classify_asset as classify_asset_record
+from brainlib.config import FINGERPRINTS_LIST_LIMIT, OBSERVATIONS_LIST_LIMIT
+from brainlib.database import db
 from brainlib.errors import bad_gateway, bad_request, not_found
 from brainlib.fingerprints import (
-    build_fingerprint,
     detect_and_persist_changes_for_asset,
     diff_fingerprints,
     fingerprint_hash,
     get_latest_fingerprint,
     get_previous_fingerprint,
     persist_changes,
-    store_fingerprint_if_changed,
 )
+from brainlib.ingest import ingest_nmap_xml as ingest_nmap_xml_record
+from brainlib.logging_utils import configure_logging, log_event
 from brainlib.ollama import OllamaError, chat_json
 from brainlib.reports import daily_report, summary_report
 
 app = FastAPI(title="HomelabSec Brain")
+logger = configure_logging("homelabsec.brain")
 
 
 class NmapXmlIngestRequest(BaseModel):
     xml_path: str
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    started = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    log_event(
+        logger,
+        "info",
+        "http_request",
+        "Request completed",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=duration_ms,
+    )
+    return response
 
 
 
@@ -74,87 +93,12 @@ def ollama_test() -> dict[str, Any]:
 @app.post("/ingest/nmap_xml")
 def ingest_nmap_xml(req: NmapXmlIngestRequest):
     try:
-        parsed_hosts = parse_nmap_xml(req.xml_path)
+        with db() as conn:
+            return ingest_nmap_xml_record(conn, req.xml_path)
     except FileNotFoundError as exc:
         raise not_found("XML file not found") from exc
     except NmapXmlError as exc:
         raise bad_request(str(exc)) from exc
-    inserted = 0
-
-    with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO scan_runs (scan_type, status)
-                VALUES ('nmap_xml_ingest', 'completed')
-                RETURNING scan_run_id
-                """
-            )
-            scan_run_id = str(cur.fetchone()[0])
-            conn.commit()
-
-        for item in parsed_hosts:
-            asset_id = get_or_create_asset(conn, item["ip"], item["mac"], item["hostname"])
-
-            with conn.cursor() as cur:
-                if item["ports"]:
-                    for p in item["ports"]:
-                        cur.execute(
-                            """
-                            INSERT INTO network_observations (
-                                scan_run_id, asset_id, ip_address, mac_address, mac_vendor,
-                                reachable, port, protocol, service_name, service_product, service_version,
-                                os_guess, raw_json
-                            )
-                            VALUES (%s, %s, %s, %s, %s, true, %s, %s, %s, %s, %s, %s, %s)
-                            """,
-                            (
-                                scan_run_id,
-                                asset_id,
-                                item["ip"],
-                                item["mac"],
-                                item["vendor"],
-                                p["port"],
-                                p["protocol"],
-                                p["service_name"],
-                                p["service_product"],
-                                p["service_version"],
-                                item["os_guess"],
-                                json.dumps(item),
-                            ),
-                        )
-                        inserted += 1
-                else:
-                    cur.execute(
-                        """
-                        INSERT INTO network_observations (
-                            scan_run_id, asset_id, ip_address, mac_address, mac_vendor,
-                            reachable, os_guess, raw_json
-                        )
-                        VALUES (%s, %s, %s, %s, %s, true, %s, %s)
-                        """,
-                        (
-                            scan_run_id,
-                            asset_id,
-                            item["ip"],
-                            item["mac"],
-                            item["vendor"],
-                            item["os_guess"],
-                            json.dumps(item),
-                        ),
-                    )
-                    inserted += 1
-
-                fp = build_fingerprint(conn, asset_id)
-                store_fingerprint_if_changed(conn, asset_id, fp)
-
-            conn.commit()
-
-    return {
-        "scan_run_id": scan_run_id,
-        "hosts_parsed": len(parsed_hosts),
-        "observations_inserted": inserted,
-    }
 
 
 @app.get("/assets")
@@ -274,83 +218,10 @@ def list_fingerprints():
 @app.post("/classify/{asset_id}")
 def classify_asset(asset_id: str):
     with db() as conn:
-        if not asset_exists(conn, asset_id):
-            raise not_found("Asset not found")
-
-        fp = build_fingerprint(conn, asset_id)
         try:
-            data = chat_json(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a homelab asset classifier. "
-                            "Use only the provided fingerprint. "
-                            "Return strict JSON with keys role and confidence. "
-                            "Role must be a short snake_case label like gateway, nas, printer, web_server, server, switch, access_point, iot_device, workstation, unknown."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Fingerprint: {json.dumps(fp)}",
-                    },
-                ]
-            )
+            return classify_asset_record(conn, asset_id)
         except OllamaError as exc:
             raise bad_gateway(str(exc)) from exc
-
-        content = data.get("message", {}).get("content", "")
-        parsed = None
-        raw_error = None
-
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError:
-            raw_error = content
-            parsed = {
-                "role": CLASSIFICATION_FALLBACK_ROLE,
-                "confidence": CLASSIFICATION_FALLBACK_CONFIDENCE,
-                "raw_model_output": content,
-            }
-
-        role = normalize_role(parsed.get("role", CLASSIFICATION_FALLBACK_ROLE))
-        confidence = parsed.get("confidence", CLASSIFICATION_FALLBACK_CONFIDENCE)
-
-        # normalize confidence to float if possible
-        try:
-            confidence = float(confidence)
-        except (TypeError, ValueError):
-            confidence = CLASSIFICATION_FALLBACK_CONFIDENCE
-
-        # normalize role to string
-        if not isinstance(role, str) or not role.strip():
-            role = CLASSIFICATION_FALLBACK_ROLE
-
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE assets
-                SET role = %s, role_confidence = %s
-                WHERE asset_id = %s
-                """,
-                (role, confidence, asset_id),
-            )
-            conn.commit()
-
-        # rebuild fingerprint so the latest fingerprint includes normalized role/confidence
-        updated_fp = build_fingerprint(conn, asset_id)
-        fingerprint_store_result = store_fingerprint_if_changed(conn, asset_id, updated_fp)
-
-    return {
-        "asset_id": asset_id,
-        "classification": {
-            "role": role,
-            "confidence": confidence
-        },
-        "fingerprint": updated_fp,
-        "fingerprint_store": fingerprint_store_result,
-        "raw_model_output": raw_error
-    }
 
 @app.get("/fingerprint/{asset_id}")
 def get_fingerprint(asset_id: str):
@@ -370,41 +241,12 @@ def get_fingerprint(asset_id: str):
 @app.get("/detect_changes/{asset_id}")
 def detect_changes_for_asset(asset_id: str):
     with db() as conn:
-        if not asset_exists(conn, asset_id):
-            raise not_found("Asset not found")
-
-        latest = get_latest_fingerprint(conn, asset_id)
-
-        if latest is None:
-            raise not_found("No fingerprint found for asset")
-
-        result = detect_and_persist_changes_for_asset(conn, asset_id)
-        return result
+        return detect_changes_for_asset_record(conn, asset_id)
 
 @app.get("/detect_changes")
 def detect_changes_all():
-    all_results = []
-
     with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT DISTINCT asset_id
-                FROM fingerprints
-                ORDER BY asset_id
-                """
-            )
-            asset_ids = [str(r[0]) for r in cur.fetchall()]
-
-        for asset_id in asset_ids:
-            result = detect_and_persist_changes_for_asset(conn, asset_id)
-            if result["changes"]:
-                all_results.append(result)
-
-    return {
-        "assets_with_changes": len(all_results),
-        "results": all_results,
-    }
+        return detect_changes_all_records(conn)
 
 @app.get("/report/daily")
 def report_daily():
@@ -418,37 +260,5 @@ def report_summary():
 
 @app.post("/classify_all")
 def classify_all():
-    ok = 0
-    errors = 0
-    failed = []
-
     with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT asset_id
-                FROM assets
-                ORDER BY last_seen DESC
-                """
-            )
-            asset_ids = [str(r[0]) for r in cur.fetchall()]
-
-    for asset_id in asset_ids:
-        try:
-            classify_asset(asset_id)
-            ok += 1
-        except Exception as exc:
-            errors += 1
-            failed.append(
-                {
-                    "asset_id": asset_id,
-                    "error": str(exc),
-                }
-            )
-
-    return {
-        "total_assets": len(asset_ids),
-        "classified_ok": ok,
-        "errors": errors,
-        "failed": failed,
-    }
+        return classify_all_assets(conn, lambda asset_id: classify_asset_record(conn, asset_id))

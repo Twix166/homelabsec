@@ -38,6 +38,12 @@ def _install_stub_modules():
             self.args = args
             self.kwargs = kwargs
 
+        def middleware(self, *args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
         def get(self, *args, **kwargs):
             def decorator(func):
                 return func
@@ -56,8 +62,14 @@ def _install_stub_modules():
             self.status_code = status_code
             self.detail = detail
 
+    class Request:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
     fastapi_stub.FastAPI = FastAPI
     fastapi_stub.HTTPException = HTTPException
+    fastapi_stub.Request = Request
 
     pydantic_stub = types.ModuleType("pydantic")
 

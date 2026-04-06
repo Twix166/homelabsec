@@ -52,6 +52,7 @@ CLASSIFICATION_FALLBACK_CONFIDENCE=0.10
 OBSERVATIONS_LIST_LIMIT=200
 FINGERPRINTS_LIST_LIMIT=200
 NOTABLE_ASSET_LIMIT=20
+LOG_LEVEL=INFO
 SCHEDULER_API_BASE=http://127.0.0.1:8088
 ```
 
@@ -68,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/Twix166/homelabsec/main/install.sh 
 The installer now:
 
 - clones or updates the repository
-- syncs `.env` into `compose/.env`
+- treats repo-root `.env` as the source of truth and resyncs `compose/.env`
 - validates Ollama connectivity and model availability
 - starts the stack with `--build`
 - waits for `/health`
@@ -86,7 +87,33 @@ SKIP_OLLAMA_VALIDATION=false
 
 `OLLAMA_HOST_URL` is used by the installer on the host. `OLLAMA_URL` is used by the `brain` container and defaults to `http://host.containers.internal:11434`.
 
-The installer copies `.env` into `compose/.env` so compose reads the same credentials and runtime settings.
+Installer env behavior:
+
+- edit the repo-root `.env`
+- the installer resyncs `compose/.env` only when needed
+- installer-driven compose commands explicitly load `../.env`, so they do not depend on whichever env file happens to be in the current working directory
+
+Installer guarantees on success:
+
+- the repo is present at the requested branch
+- `.env` exists
+- `compose/.env` matches `.env`
+- Ollama was reachable unless validation was explicitly skipped
+- the configured model existed unless validation was explicitly skipped
+- Postgres started
+- migrations ran
+- `brain`, `scheduler`, and `frontend` started
+- `/health` responded
+- `/report/summary` returned a schema-dependent payload
+
+Still manual:
+
+- choosing production-grade secrets
+- deciding whether the deployment is LAN-only or exposed behind a proxy
+- configuring TLS and authentication if you expose the stack beyond a trusted admin network
+- setting host firewall policy
+- creating and testing a recurring backup plan
+- installing or updating custom Ollama models beyond the installer’s existence check
 
 ## Web dashboard
 
@@ -119,6 +146,45 @@ The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`
 
 The `brain` service is now built from `brain/Dockerfile` with pinned Python dependencies in `brain/requirements.txt` instead of installing packages dynamically at container startup.
 
+## Trust Model
+
+HomelabSec is currently designed for trusted local-network use.
+
+Supported deployment assumptions:
+
+- the stack runs on infrastructure you control
+- the dashboard and API are reachable only from your LAN, VPN, or another trusted admin network
+- Postgres is not exposed directly to untrusted clients
+- Ollama is reachable only from the local host or a trusted internal network path
+
+Current non-goals for the default compose deployment:
+
+- multi-user access control
+- internet exposure without an additional reverse proxy and auth layer
+- direct public access to the API or dashboard
+
+If you keep the default compose ports published on a host with broader network exposure, you should treat that as an unsupported deployment shape until you add the controls below.
+
+## Exposed Deployments
+
+HomelabSec does not currently ship with built-in authentication, user management, or TLS termination.
+
+If you need access beyond a trusted LAN, put it behind a reverse proxy and add all of the following:
+
+- TLS termination with a real certificate
+- authentication in front of both the dashboard and the API
+- IP allowlisting or VPN access if possible
+- restricted exposure of Postgres so it is never reachable from the public internet
+
+Practical deployment pattern:
+
+- publish `frontend` and `brain` only to localhost or a private interface
+- terminate TLS in Caddy, Nginx, Traefik, or another reverse proxy
+- require SSO, basic auth, or forward-auth at the proxy layer
+- avoid exposing `scheduler` or `postgres` at all
+
+If the stack must remain LAN-only, the simplest safe option is to keep the current compose deployment and limit host-level firewall access to your admin subnet.
+
 ## Ollama Configuration
 
 Compose now accepts:
@@ -147,6 +213,36 @@ docker compose run --rm migrate
 ```
 
 The migration runner records applied versions in the `schema_migrations` table.
+
+## Backups and Restore
+
+The durable data for HomelabSec lives in Postgres. At minimum, back up:
+
+- the Postgres database contents
+- your `.env`
+- any local model/runtime configuration needed to reach Ollama
+
+Example logical backup:
+
+```bash
+docker compose -f compose/compose.yaml exec -T postgres \
+  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > homelabsec-$(date +%F).sql
+```
+
+Example restore into a fresh stack:
+
+```bash
+cat homelabsec-YYYY-MM-DD.sql | docker compose -f compose/compose.yaml exec -T postgres \
+  psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+```
+
+Operational notes:
+
+- run restores only after the target schema is migrated to the expected version
+- test restores periodically on a disposable instance instead of trusting backups blindly
+- named Docker volumes are not a backup strategy by themselves
+
+If you prefer volume-level backups instead of logical dumps, document and test that process separately for your host environment.
 
 ## Testing Plan
 
@@ -205,6 +301,13 @@ The scheduler now waits for API readiness at startup, retries API calls, logs pe
 STARTUP_DISCOVERY=true
 ```
 
+Startup discovery decision:
+
+- default behavior remains `STARTUP_DISCOVERY=false`
+- this avoids kicking off a network scan immediately on every container restart
+- use `STARTUP_DISCOVERY=true` if you explicitly want boot-time discovery after maintenance windows or host reboots
+- periodic discovery still starts on the configured interval either way
+
 Additional scheduler tuning variables:
 
 ```bash
@@ -231,6 +334,36 @@ Operational assumptions:
 - `nmap -sS` requires raw-socket privileges inside the scheduler container
 - the scheduler should run only on trusted local infrastructure
 - host-network mode should be reviewed again only if the scan model changes, for example moving away from SYN scans or offloading discovery to the host
+
+## Logs and Observability
+
+Current observability is intentionally minimal. The stack relies on container logs plus compose healthchecks.
+
+`brain`, `scheduler`, and `migrate` now emit structured JSON log lines to stdout so compose logs are easier to filter and ship elsewhere.
+
+Useful operational commands:
+
+```bash
+docker compose -f compose/compose.yaml ps
+docker compose -f compose/compose.yaml logs -f brain
+docker compose -f compose/compose.yaml logs -f scheduler
+docker compose -f compose/compose.yaml logs -f frontend
+docker compose -f compose/compose.yaml logs -f postgres
+```
+
+What to watch:
+
+- `brain` for request failures, migration issues, and Ollama-related errors
+- `scheduler` for discovery failures, API retry loops, and scan timing
+- `postgres` for startup or readiness failures
+- compose health status for service-level regressions
+
+Recommended next-step observability if the project grows:
+
+- structured JSON logging for `brain` and `scheduler`
+- centralized log retention outside Docker’s default local buffers
+- basic metrics for job success/failure counts, API error counts, and scan duration
+- alerting on repeated scheduler failures or unhealthy services
 
 ## API usage
 

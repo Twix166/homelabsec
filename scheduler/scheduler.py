@@ -1,11 +1,12 @@
 import os
 import subprocess
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 import schedule
+
+from logging_utils import configure_logging, log_event
 
 API_BASE = os.environ.get("API_BASE", "http://brain:8088")
 TARGET_SUBNET = os.environ.get("TARGET_SUBNET", "10.0.0.0/24")
@@ -17,14 +18,16 @@ API_RETRY_ATTEMPTS = int(os.environ.get("API_RETRY_ATTEMPTS", "5"))
 API_RETRY_DELAY_SECONDS = int(os.environ.get("API_RETRY_DELAY_SECONDS", "5"))
 STARTUP_API_TIMEOUT_SECONDS = int(os.environ.get("STARTUP_API_TIMEOUT_SECONDS", "120"))
 STARTUP_DISCOVERY = os.environ.get("STARTUP_DISCOVERY", "false").strip().lower() in {"1", "true", "yes", "on"}
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+logger = configure_logging("homelabsec.scheduler", LOG_LEVEL)
 
 
-def log(msg: str) -> None:
-    print(f"[{datetime.now(timezone.utc).isoformat()}] {msg}", flush=True)
+def log(message: str, event: str = "scheduler_log", level: str = "info", **fields) -> None:
+    log_event(logger, level, event, message, **fields)
 
 
 def run_cmd(cmd: list[str]) -> None:
-    log(f"Running: {' '.join(cmd)}")
+    log("Running command", event="command_start", command=cmd)
     subprocess.run(cmd, check=True)
 
 
@@ -42,11 +45,11 @@ def wait_for_api_ready(timeout_seconds: int) -> None:
         try:
             response = requests.get(f"{API_BASE}/health", timeout=5)
             response.raise_for_status()
-            log("API health check succeeded")
+            log("API health check succeeded", event="api_ready", api_base=API_BASE)
             return
         except Exception as exc:
             last_error = str(exc)
-            log(f"Waiting for API readiness: {exc}")
+            log("Waiting for API readiness", event="api_wait", api_base=API_BASE, error=str(exc))
             time.sleep(5)
 
     raise RuntimeError(f"Timed out waiting for API readiness: {last_error}")
@@ -65,8 +68,13 @@ def request_with_retries(method: str, path: str, **kwargs) -> requests.Response:
             if attempt == API_RETRY_ATTEMPTS:
                 break
             log(
-                f"Request failed for {method} {path} "
-                f"(attempt {attempt}/{API_RETRY_ATTEMPTS}): {exc}"
+                "Request failed and will retry",
+                event="request_retry",
+                method=method,
+                path=path,
+                attempt=attempt,
+                max_attempts=API_RETRY_ATTEMPTS,
+                error=str(exc),
             )
             time.sleep(API_RETRY_DELAY_SECONDS)
 
@@ -74,12 +82,12 @@ def request_with_retries(method: str, path: str, **kwargs) -> requests.Response:
 
 
 def safe_job(name: str, fn) -> None:
-    log(f"Starting job: {name}")
+    log("Starting job", event="job_start", job=name)
     try:
         fn()
-        log(f"Completed job: {name}")
+        log("Completed job", event="job_complete", job=name)
     except Exception as exc:
-        log(f"Job failed: {name}: {exc}")
+        log("Job failed", event="job_failed", level="error", job=name, error=str(exc))
 
 
 def run_discovery() -> None:
@@ -97,7 +105,7 @@ def run_discovery() -> None:
             TARGET_SUBNET,
         ]
     )
-    log(f"Discovery finished: {out}")
+    log("Discovery finished", event="discovery_complete", output_path=str(out))
 
     ingest_latest(str(out))
     classify_all()
@@ -105,49 +113,58 @@ def run_discovery() -> None:
 
 
 def ingest_latest(xml_path: str) -> None:
-    log(f"Ingesting XML: {xml_path}")
+    log("Ingesting XML", event="ingest_start", xml_path=xml_path)
     r = request_with_retries(
         "POST",
         "/ingest/nmap_xml",
         json={"xml_path": xml_path},
         timeout=300,
     )
-    log(f"Ingest response: {r.json()}")
+    log("Ingest response received", event="ingest_complete", response=r.json())
 
 
 def classify_all() -> None:
-    log("Running classify_all")
+    log("Running classify_all", event="classify_all_start")
     request_with_retries("POST", "/classify_all", timeout=600)
-    log("classify_all complete")
+    log("classify_all complete", event="classify_all_complete")
 
 
 def detect_changes() -> None:
-    log("Running detect_changes")
+    log("Running detect_changes", event="detect_changes_start")
     r = request_with_retries("GET", "/detect_changes", timeout=600)
-    log(f"detect_changes summary: {r.json().get('assets_with_changes')}")
+    log(
+        "detect_changes complete",
+        event="detect_changes_complete",
+        assets_with_changes=r.json().get("assets_with_changes"),
+    )
 
 
 def daily_report() -> None:
-    log("Generating daily report")
+    log("Generating daily report", event="daily_report_start")
     r = request_with_retries("GET", "/report/daily", timeout=300)
     report = r.json()
     log(
-        f"Daily report: recent_change_count={report.get('recent_change_count')}, "
-        f"recent_asset_count={report.get('recent_asset_count')}, "
-        f"notable_asset_count={report.get('notable_asset_count')}"
+        "Daily report generated",
+        event="daily_report_complete",
+        recent_change_count=report.get("recent_change_count"),
+        recent_asset_count=report.get("recent_asset_count"),
+        notable_asset_count=report.get("notable_asset_count"),
     )
 
 
 def main() -> None:
-    log("Scheduler starting")
-    log(f"API_BASE={API_BASE}")
-    log(f"TARGET_SUBNET={TARGET_SUBNET}")
-    log(f"DISCOVERY_INTERVAL_MINUTES={DISCOVERY_INTERVAL_MINUTES}")
-    log(f"REPORT_HOUR_UTC={REPORT_HOUR_UTC}")
-    log(f"API_RETRY_ATTEMPTS={API_RETRY_ATTEMPTS}")
-    log(f"API_RETRY_DELAY_SECONDS={API_RETRY_DELAY_SECONDS}")
-    log(f"STARTUP_API_TIMEOUT_SECONDS={STARTUP_API_TIMEOUT_SECONDS}")
-    log(f"STARTUP_DISCOVERY={STARTUP_DISCOVERY}")
+    log(
+        "Scheduler starting",
+        event="scheduler_start",
+        api_base=API_BASE,
+        target_subnet=TARGET_SUBNET,
+        discovery_interval_minutes=DISCOVERY_INTERVAL_MINUTES,
+        report_hour_utc=REPORT_HOUR_UTC,
+        api_retry_attempts=API_RETRY_ATTEMPTS,
+        api_retry_delay_seconds=API_RETRY_DELAY_SECONDS,
+        startup_api_timeout_seconds=STARTUP_API_TIMEOUT_SECONDS,
+        startup_discovery=STARTUP_DISCOVERY,
+    )
 
     wait_for_api_ready(STARTUP_API_TIMEOUT_SECONDS)
 

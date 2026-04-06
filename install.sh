@@ -33,8 +33,17 @@ detect_compose() {
 
 sync_env_file() {
   if [[ -f .env ]]; then
-    log "Syncing .env into compose/.env"
-    cp .env compose/.env
+    if [[ ! -d compose ]]; then
+      echo "Error: compose directory not found in $INSTALL_DIR" >&2
+      exit 1
+    fi
+
+    if [[ ! -f compose/.env ]] || ! cmp -s .env compose/.env; then
+      log "Syncing .env into compose/.env"
+      cp .env compose/.env
+    else
+      log "compose/.env already matches .env"
+    fi
   fi
 }
 
@@ -109,7 +118,7 @@ validate_ollama() {
 
 run_migrations() {
   log "Running database migrations"
-  $COMPOSE_CMD run --rm migrate
+  compose_cmd run --rm migrate
 }
 
 log "Checking prerequisites"
@@ -128,6 +137,20 @@ if [[ -z "$COMPOSE_CMD" ]]; then
   echo "Install Docker Compose plugin or docker-compose first." >&2
   exit 1
 fi
+
+compose_cmd() {
+  if [[ ! -f "$INSTALL_DIR/.env" ]]; then
+    echo "Error: expected env file at $INSTALL_DIR/.env" >&2
+    return 1
+  fi
+
+  if [[ "$COMPOSE_CMD" == "docker compose" ]]; then
+    docker compose --env-file ../.env "$@"
+    return
+  fi
+
+  docker-compose --env-file ../.env "$@"
+}
 
 log "Using compose command: $COMPOSE_CMD"
 
@@ -158,11 +181,11 @@ validate_ollama
 
 log "Starting containers"
 cd compose
-$COMPOSE_CMD up -d --build postgres
+compose_cmd up -d --build postgres
 
 run_migrations
 
-$COMPOSE_CMD up -d --build brain scheduler frontend
+compose_cmd up -d --build brain scheduler frontend
 
 log "Waiting for API health"
 wait_for_http "${API_BASE_URL}/health" "API health endpoint"
@@ -179,14 +202,16 @@ Repo location:
 
 Useful commands:
   cd $INSTALL_DIR/compose
-  $COMPOSE_CMD ps
-  $COMPOSE_CMD logs -f brain
+  $COMPOSE_CMD --env-file ../.env ps
+  $COMPOSE_CMD --env-file ../.env logs -f brain
   curl ${API_BASE_URL}/health
 
 Next steps:
   1. Edit $INSTALL_DIR/.env if needed
   2. Re-run:
-       cd $INSTALL_DIR/compose && $COMPOSE_CMD up -d --build
+       cd $INSTALL_DIR
+       ./install.sh
   3. Review README.md for scheduler, scanning, and Ollama setup
+  4. Treat $INSTALL_DIR/.env as the source of truth; the installer will resync compose/.env automatically
 
 EOF
