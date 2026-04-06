@@ -38,4 +38,4 @@ This repo is at the stage where it can:
 You can install directly from GitHub with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Twix16/homelabsec/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Twix166/homelabsec/main/install.sh | bash
