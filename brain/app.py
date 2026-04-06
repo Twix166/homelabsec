@@ -350,7 +350,15 @@ def build_fingerprint(conn: psycopg.Connection, asset_id: str) -> dict[str, Any]
 
 
 def fingerprint_hash(fingerprint: dict[str, Any]) -> str:
-    canonical = json.dumps(fingerprint, sort_keys=True, separators=(",", ":"))
+    # make a deep copy via JSON roundtrip so we can safely normalize it
+    stable_fp = json.loads(json.dumps(fingerprint))
+
+    # remove volatile fields that should not create a new fingerprint version
+    history = stable_fp.get("history", {})
+    if isinstance(history, dict):
+        history.pop("last_seen", None)
+
+    canonical = json.dumps(stable_fp, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 def get_latest_fingerprint(conn: psycopg.Connection, asset_id: str) -> Optional[dict[str, Any]]:
@@ -787,7 +795,7 @@ def classify_asset(asset_id: str):
             cur.execute(
                 """
                 UPDATE assets
-                SET role = %s, role_confidence = %s, last_seen = now()
+                SET role = %s, role_confidence = %s
                 WHERE asset_id = %s
                 """,
                 (role, confidence, asset_id),
