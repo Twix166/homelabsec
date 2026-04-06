@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun>
+  <host>
+    <status state="up" />
+    <address addr="10.0.0.10" addrtype="ipv4" />
+    <address addr="AA:BB:CC:DD:EE:FF" addrtype="mac" vendor="Acme Devices" />
+    <hostnames>
+      <hostname name="fileserver.local" />
+    </hostnames>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" />
+        <service name="ssh" product="OpenSSH" version="9.0" />
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="closed" />
+        <service name="http" />
+      </port>
+    </ports>
+    <os>
+      <osmatch name="Linux 5.X" />
+    </os>
+  </host>
+  <host>
+    <status state="down" />
+    <address addr="10.0.0.99" addrtype="ipv4" />
+  </host>
+</nmaprun>
+

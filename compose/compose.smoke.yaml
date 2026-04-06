@@ -1,14 +1,14 @@
 services:
   postgres:
     image: postgres:17
-    container_name: homelabsec-postgres
+    container_name: homelabsec-smoke-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: homelabsec
       POSTGRES_USER: homelabsec
       POSTGRES_PASSWORD: change-me
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - smoke-pgdata:/var/lib/postgresql/data
       - ../brain/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U homelabsec -d homelabsec"]
@@ -17,11 +17,11 @@ services:
       retries: 5
       start_period: 10s
     ports:
-      - "5432:5432"
+      - "15432:5432"
 
   brain:
     image: python:3.12-slim
-    container_name: homelabsec-brain
+    container_name: homelabsec-smoke-brain
     restart: unless-stopped
     working_dir: /app
     command: >
@@ -50,14 +50,14 @@ services:
       retries: 5
       start_period: 30s
     ports:
-      - "8088:8088"
-  
+      - "18088:8088"
+
   scheduler:
     build: ../scheduler
-    container_name: homelabsec-scheduler
+    container_name: homelabsec-smoke-scheduler
     restart: unless-stopped
     environment:
-      API_BASE: http://127.0.0.1:8088
+      API_BASE: http://127.0.0.1:18088
       TARGET_SUBNET: ${TARGET_SUBNET:-10.0.0.0/24}
       DISCOVERY_INTERVAL_MINUTES: ${DISCOVERY_INTERVAL_MINUTES:-30}
       REPORT_HOUR_UTC: ${REPORT_HOUR_UTC:-8}
@@ -73,7 +73,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import os, requests; requests.get(os.environ.get('API_BASE', 'http://127.0.0.1:8088') + '/health', timeout=5).raise_for_status()\"",
+          "python -c \"import os, requests; requests.get(os.environ.get('API_BASE', 'http://127.0.0.1:18088') + '/health', timeout=5).raise_for_status()\"",
         ]
       interval: 30s
       timeout: 10s
@@ -82,7 +82,7 @@ services:
 
   frontend:
     build: ../frontend
-    container_name: homelabsec-frontend
+    container_name: homelabsec-smoke-frontend
     restart: unless-stopped
     depends_on:
       brain:
@@ -94,7 +94,7 @@ services:
       retries: 3
       start_period: 10s
     ports:
-      - "8080:80"
+      - "18080:80"
 
 volumes:
-  pgdata:
+  smoke-pgdata:

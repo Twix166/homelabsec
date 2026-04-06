@@ -45,12 +45,16 @@ curl -fsSL https://raw.githubusercontent.com/Twix166/homelabsec/main/install.sh 
 
 A read-only web dashboard is available from the `frontend` service on port `8080`.
 
-Start the stack from [compose/compose.yaml](/home/rbalm/homelabsec/compose/compose.yaml):
+Start the stack from `compose/compose.yaml`:
 
 ```bash
 cd compose
 docker compose up -d --build
 ```
+
+On a fresh Postgres volume, the database schema is initialized automatically from `brain/init.sql`.
+
+If you already have an existing `pgdata` volume from an older run, the init script will not be re-applied automatically. In that case, either load `brain/init.sql` manually into the existing database or recreate the volume if you do not need to preserve data.
 
 Then open:
 
@@ -59,6 +63,50 @@ http://localhost:8080
 ```
 
 The frontend proxies API requests internally to the `brain` service, so no backend changes are required.
+
+The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`. `brain` waits for Postgres readiness, and the dependent services wait for the API health endpoint before starting.
+
+## Testing Plan
+
+The test strategy is tracked in `TEST_PLAN.md`. It defines the unit, integration, regression, and pre-UAT checks needed to make changes safely as the product evolves.
+
+## Running Unit Tests
+
+The first automated test slice covers pure functions in `brain/app.py` and does not require a running database or Ollama instance.
+
+Install the test dependency:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+```
+
+Run the unit tests:
+
+```bash
+python3 -m pytest
+```
+
+Run only the integration tests:
+
+```bash
+python3 -m pytest tests/integration
+```
+
+The integration suite starts an isolated Postgres test container on port `55432`, loads the schema from `brain/init.sql`, and runs the FastAPI app in-process. Ollama is mocked in the classification integration tests so the results stay deterministic.
+
+Run the regression tests for the frontend-backed API contract:
+
+```bash
+python3 -m pytest tests/regression
+```
+
+Run the compose smoke test:
+
+```bash
+python3 -m pytest tests/smoke
+```
+
+The smoke suite starts the full compose stack with remapped ports on `18080`, `18088`, and `15432`, waits for healthchecks to pass, verifies the API and frontend respond, and then tears the stack down.
 
 ## API usage
 
