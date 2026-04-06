@@ -376,6 +376,52 @@ def get_latest_fingerprint(conn: psycopg.Connection, asset_id: str) -> Optional[
         "created_at": row[2].isoformat(),
     }
 
+def store_fingerprint_if_changed(
+    conn: psycopg.Connection,
+    asset_id: str,
+    fingerprint: dict[str, Any],
+) -> dict[str, Any]:
+    new_hash = fingerprint_hash(fingerprint)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT fingerprint_id, fingerprint_hash, created_at
+            FROM fingerprints
+            WHERE asset_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (asset_id,),
+        )
+        row = cur.fetchone()
+
+        if row and row[1] == new_hash:
+            return {
+                "stored": False,
+                "fingerprint_id": str(row[0]),
+                "fingerprint_hash": row[1],
+                "created_at": row[2].isoformat(),
+            }
+
+        cur.execute(
+            """
+            INSERT INTO fingerprints (asset_id, fingerprint_hash, fingerprint_json)
+            VALUES (%s, %s, %s)
+            RETURNING fingerprint_id, created_at
+            """,
+            (asset_id, new_hash, json.dumps(fingerprint)),
+        )
+        inserted = cur.fetchone()
+        conn.commit()
+
+    return {
+        "stored": True,
+        "fingerprint_id": str(inserted[0]),
+        "fingerprint_hash": new_hash,
+        "created_at": inserted[1].isoformat(),
+    }
+
 def get_previous_fingerprint(conn: psycopg.Connection, asset_id: str) -> Optional[dict[str, Any]]:
     with conn.cursor() as cur:
         cur.execute(
@@ -641,14 +687,7 @@ def ingest_nmap_xml(req: NmapXmlIngestRequest):
                     inserted += 1
 
                 fp = build_fingerprint(conn, asset_id)
-                fp_hash = fingerprint_hash(fp)
-                cur.execute(
-                    """
-                    INSERT INTO fingerprints (asset_id, fingerprint_hash, fingerprint_json)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (asset_id, fp_hash, json.dumps(fp)),
-                )
+                store_fingerprint_if_changed(conn, asset_id, fp)
 
             conn.commit()
 
@@ -755,13 +794,18 @@ def classify_asset(asset_id: str):
             )
             conn.commit()
 
+        # rebuild fingerprint so the latest fingerprint includes normalized role/confidence
+        updated_fp = build_fingerprint(conn, asset_id)
+        fingerprint_store_result = store_fingerprint_if_changed(conn, asset_id, updated_fp)
+
     return {
         "asset_id": asset_id,
         "classification": {
             "role": role,
             "confidence": confidence
         },
-        "fingerprint": fp,
+        "fingerprint": updated_fp,
+        "fingerprint_store": fingerprint_store_result,
         "raw_model_output": raw_error
     }
 
