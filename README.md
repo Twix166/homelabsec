@@ -39,3 +39,67 @@ You can install directly from GitHub with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Twix166/homelabsec/main/install.sh | bash
+```
+
+## Web dashboard
+
+A read-only web dashboard is available from the `frontend` service on port `8080`.
+
+Start the stack from [compose/compose.yaml](/home/rbalm/homelabsec/compose/compose.yaml):
+
+```bash
+cd compose
+docker compose up -d --build
+```
+
+Then open:
+
+```text
+http://localhost:8080
+```
+
+The frontend proxies API requests internally to the `brain` service, so no backend changes are required.
+
+## API usage
+
+The API is exposed by the `brain` service on port `8088`.
+
+Classify a single asset:
+
+```bash
+curl -X POST http://localhost:8088/classify/<asset_id>
+```
+
+Example response:
+
+```json
+{
+  "asset_id": "7d0d0a6f-4f7a-4a30-8b56-0f3b0aa9d9ab",
+  "classification": {
+    "role": "nas",
+    "confidence": 0.97
+  },
+  "fingerprint": {},
+  "fingerprint_store": {
+    "changed": false
+  },
+  "raw_model_output": null
+}
+```
+
+Classify all known assets:
+
+```bash
+curl -X POST http://localhost:8088/classify_all
+```
+
+Example response:
+
+```json
+{
+  "total_assets": 12,
+  "classified_ok": 12,
+  "errors": 0,
+  "failed": []
+}
+```
