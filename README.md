@@ -194,6 +194,12 @@ Start it with:
 ./run_secure_edge.sh
 ```
 
+For stronger auth instead of basic auth:
+
+```bash
+./run_secure_edge.sh --oidc
+```
+
 The launcher chooses ports in this order:
 
 - `8081/8443`
@@ -205,6 +211,13 @@ If you prefer to choose ports yourself, you can still start the overlay directly
 ```bash
 cd compose
 docker compose -f compose.yaml -f compose.exposed.yaml up -d --build
+```
+
+OIDC-authenticated edge:
+
+```bash
+cd compose
+docker compose -f compose.yaml -f compose.exposed.yaml -f compose.oidc.yaml up -d --build
 ```
 
 The secure overlay:
@@ -219,10 +232,25 @@ Relevant variables:
 ```bash
 EDGE_AUTH_USERNAME=admin
 EDGE_AUTH_PASSWORD=change-me-now
+EDGE_AUTH_MODE=basic
 EDGE_SERVER_NAME=localhost
 EDGE_TLS_MODE=self_signed
 EDGE_HTTP_PORT=8081
 EDGE_HTTPS_PORT=8443
+```
+
+OIDC variables for the stronger-auth overlay:
+
+```bash
+EDGE_OIDC_PROVIDER=oidc
+EDGE_OIDC_ISSUER_URL=https://your-idp.example.com/application/o/homelabsec/
+EDGE_OIDC_CLIENT_ID=homelabsec
+EDGE_OIDC_CLIENT_SECRET=replace-me
+EDGE_OIDC_COOKIE_SECRET=replace-with-32-byte-base64-secret
+EDGE_OIDC_REDIRECT_URL=https://localhost:8443/oauth2/callback
+EDGE_OIDC_EMAIL_DOMAINS=*
+EDGE_OIDC_SCOPE=openid email profile
+EDGE_OIDC_WHITELIST_DOMAINS=
 ```
 
 TLS modes:
@@ -230,7 +258,9 @@ TLS modes:
 - `EDGE_TLS_MODE=self_signed` generates a self-signed certificate automatically on first start
 - `EDGE_TLS_MODE=provided` expects certificate files at `edge/certs/tls.crt` and `edge/certs/tls.key`
 
-The secure overlay covers reverse proxying, basic auth, and TLS termination. It does not provide SSO, per-user roles, or API token management.
+The default secure overlay covers reverse proxying, basic auth, and TLS termination.
+
+The OIDC overlay adds stronger proxy-layer auth with `oauth2-proxy`, while preserving the current app and API shape. It still does not provide in-app per-user roles or API token management.
 
 ## Ollama Configuration
 
@@ -406,6 +436,14 @@ This adds:
 - Prometheus on `127.0.0.1:9090`
 - Grafana on `127.0.0.1:3001`
 
+The monitoring overlay now also includes:
+
+- a provisioned `HomelabSec Overview` Grafana dashboard
+- Prometheus alert rules for brain target availability
+- Prometheus alert rules for scheduler target availability
+- Prometheus alert rules for elevated brain 5xx rate and sustained high average latency
+- Prometheus alert rules for scheduler job failures and stale discovery runs
+
 Relevant variables:
 
 ```bash
@@ -417,7 +455,9 @@ SCHEDULER_METRICS_PORT=9100
 LOG_LEVEL=INFO
 ```
 
-Grafana is provisioned with a default Prometheus datasource.
+Grafana is provisioned with a default Prometheus datasource and the `HomelabSec Overview` dashboard.
+
+The first alerting step is rule-based inside Prometheus. If alerts need to leave Prometheus and reach operators automatically, add Alertmanager or another notification path on top of this rule set.
 
 Useful operational commands:
 

@@ -1,9 +1,7 @@
 #!/bin/sh
 set -eu
 
-: "${EDGE_AUTH_USERNAME:?EDGE_AUTH_USERNAME is required}"
-: "${EDGE_AUTH_PASSWORD:?EDGE_AUTH_PASSWORD is required}"
-
+EDGE_AUTH_MODE="${EDGE_AUTH_MODE:-basic}"
 EDGE_SERVER_NAME="${EDGE_SERVER_NAME:-localhost}"
 EDGE_TLS_MODE="${EDGE_TLS_MODE:-self_signed}"
 EDGE_CERT_PATH="${EDGE_CERT_PATH:-/etc/nginx/certs/tls.crt}"
@@ -11,7 +9,18 @@ EDGE_KEY_PATH="${EDGE_KEY_PATH:-/etc/nginx/certs/tls.key}"
 
 mkdir -p "$(dirname "$EDGE_CERT_PATH")"
 
-htpasswd -bc /etc/nginx/.htpasswd "$EDGE_AUTH_USERNAME" "$EDGE_AUTH_PASSWORD"
+TEMPLATE_PATH="/etc/nginx/templates/default.conf.template"
+
+if [ "$EDGE_AUTH_MODE" = "basic" ]; then
+  : "${EDGE_AUTH_USERNAME:?EDGE_AUTH_USERNAME is required}"
+  : "${EDGE_AUTH_PASSWORD:?EDGE_AUTH_PASSWORD is required}"
+  htpasswd -bc /etc/nginx/.htpasswd "$EDGE_AUTH_USERNAME" "$EDGE_AUTH_PASSWORD"
+elif [ "$EDGE_AUTH_MODE" = "oauth2_proxy" ]; then
+  TEMPLATE_PATH="/etc/nginx/templates/oauth2_proxy.conf.template"
+else
+  echo "Error: unsupported EDGE_AUTH_MODE=$EDGE_AUTH_MODE" >&2
+  exit 1
+fi
 
 if [ "$EDGE_TLS_MODE" = "self_signed" ]; then
   if [ ! -f "$EDGE_CERT_PATH" ] || [ ! -f "$EDGE_KEY_PATH" ]; then
@@ -33,7 +42,7 @@ fi
 
 export EDGE_SERVER_NAME EDGE_CERT_PATH EDGE_KEY_PATH
 envsubst '${EDGE_SERVER_NAME} ${EDGE_CERT_PATH} ${EDGE_KEY_PATH}' \
-  < /etc/nginx/templates/default.conf.template \
+  < "$TEMPLATE_PATH" \
   > /etc/nginx/conf.d/default.conf
 
 exec nginx -g 'daemon off;'

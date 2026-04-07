@@ -8,6 +8,7 @@ DEFAULT_HTTP_PORT=8081
 DEFAULT_HTTPS_PORT=8443
 FALLBACK_HTTP_PORT=18081
 FALLBACK_HTTPS_PORT=18443
+USE_OIDC=false
 
 port_in_use() {
   local port="$1"
@@ -88,6 +89,20 @@ main() {
     exit 1
   fi
 
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --oidc)
+        USE_OIDC=true
+        ;;
+      *)
+        echo "Unknown argument: $1" >&2
+        echo "Usage: ./run_secure_edge.sh [--oidc]" >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
   local selected
   selected="$(choose_ports)"
 
@@ -98,8 +113,14 @@ main() {
 
   (
     cd "$COMPOSE_DIR"
-    EDGE_HTTP_PORT="$http_port" EDGE_HTTPS_PORT="$https_port" \
-      docker compose -f compose.yaml -f compose.exposed.yaml up -d --build
+    if [ "$USE_OIDC" = true ]; then
+      EDGE_HTTP_PORT="$http_port" EDGE_HTTPS_PORT="$https_port" \
+      EDGE_OIDC_REDIRECT_URL="${EDGE_OIDC_REDIRECT_URL:-https://localhost:${https_port}/oauth2/callback}" \
+        docker compose -f compose.yaml -f compose.exposed.yaml -f compose.oidc.yaml up -d --build
+    else
+      EDGE_HTTP_PORT="$http_port" EDGE_HTTPS_PORT="$https_port" \
+        docker compose -f compose.yaml -f compose.exposed.yaml up -d --build
+    fi
   )
 
   cat <<EOF
@@ -107,6 +128,12 @@ Secure edge available at:
   http://localhost:${http_port}
   https://localhost:${https_port}
 EOF
+
+  if [ "$USE_OIDC" = true ]; then
+    echo "Auth mode: OIDC via oauth2-proxy"
+  else
+    echo "Auth mode: basic"
+  fi
 }
 
 main "$@"

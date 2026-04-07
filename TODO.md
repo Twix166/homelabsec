@@ -67,9 +67,10 @@ Status:
 - An optional auth/TLS edge overlay now exists for broader deployment scenarios.
 - An optional monitoring overlay now exists for Prometheus and Grafana.
 - `brain` now exposes Prometheus-style API metrics.
+- The monitoring overlay now includes a provisioned Grafana dashboard and Prometheus alert rules for core API and scheduler health.
 
-- Replace basic-auth edge protection with SSO or stronger auth if multi-user or internet-facing deployment becomes a hard requirement.
-- Add richer dashboards and alerting rules if operational depth beyond the provided metrics stack is needed.
+- An optional OIDC-based stronger-auth overlay now exists for exposed deployments.
+- Add notification routing, such as Alertmanager, if alerts need to reach operators automatically.
 
 ## Priority 6: Testing and Verification
 
