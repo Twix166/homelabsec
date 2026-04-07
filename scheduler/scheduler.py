@@ -1,12 +1,21 @@
 import os
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 import schedule
 
 from logging_utils import configure_logging, log_event
+from metrics import (
+    record_api_request,
+    record_api_request_failure,
+    record_job_completed,
+    record_job_failed,
+    record_job_started,
+    start_metrics_server,
+)
 
 API_BASE = os.environ.get("API_BASE", "http://brain:8088")
 TARGET_SUBNET = os.environ.get("TARGET_SUBNET", "10.0.0.0/24")
@@ -19,6 +28,7 @@ API_RETRY_DELAY_SECONDS = int(os.environ.get("API_RETRY_DELAY_SECONDS", "5"))
 STARTUP_API_TIMEOUT_SECONDS = int(os.environ.get("STARTUP_API_TIMEOUT_SECONDS", "120"))
 STARTUP_DISCOVERY = os.environ.get("STARTUP_DISCOVERY", "false").strip().lower() in {"1", "true", "yes", "on"}
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+SCHEDULER_METRICS_PORT = int(os.environ.get("SCHEDULER_METRICS_PORT", "9100"))
 logger = configure_logging("homelabsec.scheduler", LOG_LEVEL)
 
 
@@ -62,9 +72,11 @@ def request_with_retries(method: str, path: str, **kwargs) -> requests.Response:
         try:
             response = requests.request(method, f"{API_BASE}{path}", **kwargs)
             response.raise_for_status()
+            record_api_request(method, path, response.status_code)
             return response
         except Exception as exc:
             last_error = exc
+            record_api_request_failure(method, path)
             if attempt == API_RETRY_ATTEMPTS:
                 break
             log(
@@ -82,11 +94,15 @@ def request_with_retries(method: str, path: str, **kwargs) -> requests.Response:
 
 
 def safe_job(name: str, fn) -> None:
+    started = time.perf_counter()
+    record_job_started(name)
     log("Starting job", event="job_start", job=name)
     try:
         fn()
+        record_job_completed(name, time.perf_counter() - started)
         log("Completed job", event="job_complete", job=name)
     except Exception as exc:
+        record_job_failed(name, time.perf_counter() - started)
         log("Job failed", event="job_failed", level="error", job=name, error=str(exc))
 
 
@@ -164,7 +180,9 @@ def main() -> None:
         api_retry_delay_seconds=API_RETRY_DELAY_SECONDS,
         startup_api_timeout_seconds=STARTUP_API_TIMEOUT_SECONDS,
         startup_discovery=STARTUP_DISCOVERY,
+        scheduler_metrics_port=SCHEDULER_METRICS_PORT,
     )
+    start_metrics_server(SCHEDULER_METRICS_PORT)
 
     wait_for_api_ready(STARTUP_API_TIMEOUT_SECONDS)
 

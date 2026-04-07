@@ -10,6 +10,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY scheduler.py logging_utils.py ./
+COPY scheduler.py logging_utils.py metrics.py ./
 
 CMD ["python", "/app/scheduler.py"]

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi import Request
+from fastapi import Request, Response
 from pydantic import BaseModel
 
 APP_DIR = Path(__file__).resolve().parent
@@ -29,6 +29,7 @@ from brainlib.fingerprints import (
 )
 from brainlib.ingest import ingest_nmap_xml as ingest_nmap_xml_record
 from brainlib.logging_utils import configure_logging, log_event
+from brainlib.metrics import record_http_request, render_metrics
 from brainlib.ollama import OllamaError, chat_json
 from brainlib.reports import daily_report, summary_report
 
@@ -43,8 +44,27 @@ class NmapXmlIngestRequest(BaseModel):
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     started = time.perf_counter()
-    response = await call_next(request)
-    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_seconds = time.perf_counter() - started
+        duration_ms = round(duration_seconds * 1000, 2)
+        record_http_request(request.method, request.url.path, 500, duration_seconds)
+        log_event(
+            logger,
+            "error",
+            "http_request",
+            "Request failed",
+            method=request.method,
+            path=request.url.path,
+            status_code=500,
+            duration_ms=duration_ms,
+        )
+        raise
+
+    duration_seconds = time.perf_counter() - started
+    duration_ms = round(duration_seconds * 1000, 2)
+    record_http_request(request.method, request.url.path, response.status_code, duration_seconds)
     log_event(
         logger,
         "info",
@@ -62,6 +82,11 @@ async def log_requests(request: Request, call_next):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(render_metrics(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 @app.post("/ollama/test")

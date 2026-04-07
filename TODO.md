@@ -37,6 +37,7 @@ Status:
 - Scan privilege and host-network assumptions are now documented.
 - Startup discovery is now an explicit documented opt-in; default startup remains non-scanning unless `STARTUP_DISCOVERY=true`.
 - Scheduler logging is now structured for easier compose-log consumption.
+- Scheduler now exposes Prometheus-style metrics on a dedicated metrics port.
 
 ## Priority 4: Backend Maintainability
 
@@ -63,9 +64,12 @@ Status:
 - Postgres backup and restore guidance is now documented.
 - Basic log and observability guidance is now documented.
 - `brain`, `scheduler`, and `migrate` now emit structured JSON logs to stdout.
+- An optional auth/TLS edge overlay now exists for broader deployment scenarios.
+- An optional monitoring overlay now exists for Prometheus and Grafana.
+- `brain` now exposes Prometheus-style API metrics.
 
-- Add production-grade auth/TLS implementation if exposed deployment becomes a product requirement.
-- Add metrics if operational depth beyond compose logs is needed.
+- Replace basic-auth edge protection with SSO or stronger auth if multi-user or internet-facing deployment becomes a hard requirement.
+- Add richer dashboards and alerting rules if operational depth beyond the provided metrics stack is needed.
 
 ## Priority 6: Testing and Verification
 

@@ -54,6 +54,7 @@ FINGERPRINTS_LIST_LIMIT=200
 NOTABLE_ASSET_LIMIT=20
 LOG_LEVEL=INFO
 SCHEDULER_API_BASE=http://127.0.0.1:8088
+SCHEDULER_METRICS_PORT=9100
 ```
 
 `compose/compose.yaml` now reads Postgres credentials from env variables instead of embedding them directly in the file.
@@ -167,7 +168,7 @@ If you keep the default compose ports published on a host with broader network e
 
 ## Exposed Deployments
 
-HomelabSec does not currently ship with built-in authentication, user management, or TLS termination.
+HomelabSec now ships an optional edge-based basic-auth and TLS deployment path, but it still does not include application-level user management, SSO, or per-user authorization.
 
 If you need access beyond a trusted LAN, put it behind a reverse proxy and add all of the following:
 
@@ -184,6 +185,40 @@ Practical deployment pattern:
 - avoid exposing `scheduler` or `postgres` at all
 
 If the stack must remain LAN-only, the simplest safe option is to keep the current compose deployment and limit host-level firewall access to your admin subnet.
+
+HomelabSec now includes an optional secure edge overlay for broader deployments.
+
+Start it with:
+
+```bash
+cd compose
+docker compose -f compose.yaml -f compose.exposed.yaml up -d --build
+```
+
+The secure overlay:
+
+- removes direct host exposure of the dashboard container
+- keeps `brain` bound to localhost on the host side
+- publishes an authenticated TLS edge in front of both the dashboard and API
+- supports either self-signed or operator-provided certificates
+
+Relevant variables:
+
+```bash
+EDGE_AUTH_USERNAME=admin
+EDGE_AUTH_PASSWORD=change-me-now
+EDGE_SERVER_NAME=localhost
+EDGE_TLS_MODE=self_signed
+EDGE_HTTP_PORT=8081
+EDGE_HTTPS_PORT=8443
+```
+
+TLS modes:
+
+- `EDGE_TLS_MODE=self_signed` generates a self-signed certificate automatically on first start
+- `EDGE_TLS_MODE=provided` expects certificate files at `edge/certs/tls.crt` and `edge/certs/tls.key`
+
+The secure overlay covers reverse proxying, basic auth, and TLS termination. It does not provide SSO, per-user roles, or API token management.
 
 ## Ollama Configuration
 
@@ -312,6 +347,7 @@ Additional scheduler tuning variables:
 
 ```bash
 SCHEDULER_API_BASE=http://127.0.0.1:8088
+SCHEDULER_METRICS_PORT=9100
 API_RETRY_ATTEMPTS=5
 API_RETRY_DELAY_SECONDS=5
 STARTUP_API_TIMEOUT_SECONDS=120
@@ -341,6 +377,36 @@ Current observability is intentionally minimal. The stack relies on container lo
 
 `brain`, `scheduler`, and `migrate` now emit structured JSON log lines to stdout so compose logs are easier to filter and ship elsewhere.
 
+`brain` and `scheduler` now expose Prometheus-style metrics:
+
+- `brain`: `http://brain:8088/metrics` from the compose network, or `http://127.0.0.1:8088/metrics` on the host
+- `scheduler`: `http://host.containers.internal:9100/metrics` from other containers, or `http://127.0.0.1:9100/metrics` on the host
+
+Start the monitoring overlay with:
+
+```bash
+cd compose
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d --build
+```
+
+This adds:
+
+- Prometheus on `127.0.0.1:9090`
+- Grafana on `127.0.0.1:3001`
+
+Relevant variables:
+
+```bash
+PROMETHEUS_HOST_PORT=9090
+GRAFANA_HOST_PORT=3001
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=change-me-now
+SCHEDULER_METRICS_PORT=9100
+LOG_LEVEL=INFO
+```
+
+Grafana is provisioned with a default Prometheus datasource.
+
 Useful operational commands:
 
 ```bash
@@ -360,9 +426,8 @@ What to watch:
 
 Recommended next-step observability if the project grows:
 
-- structured JSON logging for `brain` and `scheduler`
 - centralized log retention outside Docker’s default local buffers
-- basic metrics for job success/failure counts, API error counts, and scan duration
+- dashboards and alerting on the exposed metrics
 - alerting on repeated scheduler failures or unhealthy services
 
 ## API usage

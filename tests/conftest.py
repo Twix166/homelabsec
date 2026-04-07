@@ -67,9 +67,16 @@ def _install_stub_modules():
             self.args = args
             self.kwargs = kwargs
 
+    class Response:
+        def __init__(self, content=None, media_type=None, status_code=200):
+            self.content = content
+            self.media_type = media_type
+            self.status_code = status_code
+
     fastapi_stub.FastAPI = FastAPI
     fastapi_stub.HTTPException = HTTPException
     fastapi_stub.Request = Request
+    fastapi_stub.Response = Response
 
     pydantic_stub = types.ModuleType("pydantic")
 
