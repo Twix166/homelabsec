@@ -11,6 +11,8 @@ venv/
 # Docker
 *.log
 docker-compose.override.yml
+edge/certs/tls.crt
+edge/certs/tls.key
 
 # Data / runtime
 discovery/raw/

@@ -191,6 +191,18 @@ HomelabSec now includes an optional secure edge overlay for broader deployments.
 Start it with:
 
 ```bash
+./run_secure_edge.sh
+```
+
+The launcher chooses ports in this order:
+
+- `8081/8443`
+- `18081/18443`
+- the next free pair starting at `20081/20443`, after an interactive confirmation
+
+If you prefer to choose ports yourself, you can still start the overlay directly:
+
+```bash
 cd compose
 docker compose -f compose.yaml -f compose.exposed.yaml up -d --build
 ```

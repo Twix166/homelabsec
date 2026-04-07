@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_DIR="$ROOT_DIR/compose"
+
+DEFAULT_HTTP_PORT=8081
+DEFAULT_HTTPS_PORT=8443
+FALLBACK_HTTP_PORT=18081
+FALLBACK_HTTPS_PORT=18443
+
+port_in_use() {
+  local port="$1"
+  ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .
+}
+
+pair_available() {
+  local http_port="$1"
+  local https_port="$2"
+  ! port_in_use "$http_port" && ! port_in_use "$https_port"
+}
+
+find_free_pair() {
+  local candidate_http=20081
+  local candidate_https=20443
+
+  while [ "$candidate_http" -le 65535 ] && [ "$candidate_https" -le 65535 ]; do
+    if pair_available "$candidate_http" "$candidate_https"; then
+      printf '%s %s\n' "$candidate_http" "$candidate_https"
+      return 0
+    fi
+    candidate_http=$((candidate_http + 1))
+    candidate_https=$((candidate_https + 1))
+  done
+
+  return 1
+}
+
+choose_ports() {
+  if pair_available "$DEFAULT_HTTP_PORT" "$DEFAULT_HTTPS_PORT"; then
+    printf '%s %s\n' "$DEFAULT_HTTP_PORT" "$DEFAULT_HTTPS_PORT"
+    return 0
+  fi
+
+  if pair_available "$FALLBACK_HTTP_PORT" "$FALLBACK_HTTPS_PORT"; then
+    printf '%s %s\n' "$FALLBACK_HTTP_PORT" "$FALLBACK_HTTPS_PORT"
+    return 0
+  fi
+
+  local discovered
+  discovered="$(find_free_pair)" || {
+    echo "Unable to find a free HTTP/HTTPS port pair for the secure edge overlay." >&2
+    exit 1
+  }
+
+  local discovered_http discovered_https
+  read -r discovered_http discovered_https <<<"$discovered"
+
+  if [ ! -t 0 ]; then
+    echo "Default secure edge ports are unavailable." >&2
+    echo "Suggested free ports: HTTP ${discovered_http}, HTTPS ${discovered_https}." >&2
+    echo "Re-run interactively or set EDGE_HTTP_PORT and EDGE_HTTPS_PORT explicitly." >&2
+    exit 1
+  fi
+
+  printf 'Default secure edge ports are unavailable. Use HTTP %s and HTTPS %s instead? [y/N] ' \
+    "$discovered_http" "$discovered_https"
+  read -r reply
+  case "${reply}" in
+    y|Y|yes|YES)
+      printf '%s %s\n' "$discovered_http" "$discovered_https"
+      ;;
+    *)
+      echo "Secure edge startup cancelled." >&2
+      exit 1
+      ;;
+  esac
+}
+
+main() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker is required." >&2
+    exit 1
+  fi
+
+  if ! command -v ss >/dev/null 2>&1; then
+    echo "ss is required for secure edge port detection." >&2
+    exit 1
+  fi
+
+  local selected
+  selected="$(choose_ports)"
+
+  local http_port https_port
+  read -r http_port https_port <<<"$selected"
+
+  echo "Starting secure edge overlay on HTTP ${http_port} and HTTPS ${https_port}."
+
+  (
+    cd "$COMPOSE_DIR"
+    EDGE_HTTP_PORT="$http_port" EDGE_HTTPS_PORT="$https_port" \
+      docker compose -f compose.yaml -f compose.exposed.yaml up -d --build
+  )
+
+  cat <<EOF
+Secure edge available at:
+  http://localhost:${http_port}
+  https://localhost:${https_port}
+EOF
+}
+
+main "$@"
