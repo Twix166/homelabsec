@@ -163,6 +163,8 @@ cd compose
 docker compose up -d --build
 ```
 
+The default compose project name is `homelabsec`, so the stack appears under that name instead of the directory-derived default.
+
 On a fresh Postgres volume, the database schema is initialized automatically from `brain/init.sql`.
 
 For ongoing schema changes, HomelabSec now uses versioned SQL migrations from `brain/migrations/` executed by `brain/migrate.py`. The compose stack runs the one-shot `migrate` service before starting `brain`, so existing deployments can be upgraded without recreating the Postgres volume.

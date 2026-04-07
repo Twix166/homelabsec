@@ -1,3 +1,5 @@
+name: homelabsec
+
 services:
   postgres:
     image: postgres:17
@@ -118,3 +120,4 @@ services:
 
 volumes:
   pgdata:
+    name: homelabsec_pgdata

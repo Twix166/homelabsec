@@ -25,10 +25,17 @@ ALERTMANAGER_HOST_PORT="${ALERTMANAGER_HOST_PORT:-9093}"
 GRAFANA_HOST_PORT="${GRAFANA_HOST_PORT:-3001}"
 API_HOST_PORT="${API_HOST_PORT:-8088}"
 FRONTEND_HOST_PORT="${FRONTEND_HOST_PORT:-8080}"
+EDGE_AUTH_MODE="${EDGE_AUTH_MODE:-}"
+
+if [[ -n "$EDGE_AUTH_MODE" ]]; then
+  DASHBOARD_URL="not published when secure edge overlay is active"
+else
+  DASHBOARD_URL="http://localhost:${FRONTEND_HOST_PORT}"
+fi
 
 cat <<EOF
 HomelabSec access URLs
-  Dashboard:     http://localhost:${FRONTEND_HOST_PORT}
+  Dashboard:     ${DASHBOARD_URL}
   API:           http://localhost:${API_HOST_PORT}
   Prometheus:    http://127.0.0.1:${PROMETHEUS_HOST_PORT}
   Alertmanager:  http://127.0.0.1:${ALERTMANAGER_HOST_PORT}
