@@ -1,0 +1,22 @@
+services:
+  fake-ollama:
+    image: python:3.12-slim
+    restart: unless-stopped
+    working_dir: /app
+    command: ["python", "/app/tests/helpers/fake_ollama_server.py"]
+    volumes:
+      - ..:/app:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1', 11434), 1); s.close()\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  brain:
+    environment:
+      OLLAMA_URL: http://fake-ollama:11434
+      OLLAMA_MODEL: homelabsec-classifier
+    depends_on:
+      fake-ollama:
+        condition: service_healthy

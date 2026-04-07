@@ -75,22 +75,24 @@ Follow-on:
 
 ### Slice 4: API Smoke Coverage
 Priority: `P1`
+Status: `done`
 
 Goal:
 - Close the remaining gap between current tests and true end-to-end runtime checks.
 
-Scope:
-- Add smoke coverage for:
+Delivered:
+- Added workflow smoke coverage for:
   - `/health`
   - ingest path
   - classification path
   - change detection path
   - daily report path
-- Keep the smoke path deterministic and fast enough for routine runs
+  - summary report path
+- Added a deterministic fake-Ollama smoke overlay
+- Kept the smoke path isolated from the real stack
 
-Acceptance criteria:
-- The smoke suite proves the primary workflow works on a live compose stack
-- Failures identify the broken workflow step directly
+Follow-on:
+- expand smoke assertions to include frontend-driven workflow rendering, not only API responses
 
 ### Slice 5: Dashboard Contract Expansion
 Priority: `P1`

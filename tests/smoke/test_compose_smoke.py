@@ -13,6 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SMOKE_COMPOSE = REPO_ROOT / "compose" / "compose.smoke.yaml"
 SMOKE_MONITORING_COMPOSE = REPO_ROOT / "compose" / "compose.smoke.monitoring.yaml"
 SMOKE_EXPOSED_COMPOSE = REPO_ROOT / "compose" / "compose.smoke.exposed.yaml"
+SMOKE_WORKFLOW_COMPOSE = REPO_ROOT / "compose" / "compose.smoke.workflow.yaml"
+FIXTURE_PATH = REPO_ROOT / "tests" / "fixtures" / "nmap_single_host.xml"
 
 
 def _find_free_port() -> int:
@@ -47,6 +49,26 @@ def _wait_for_http(url: str, timeout_seconds: int = 120, headers: dict[str, str]
         except Exception:
             time.sleep(2)
     raise AssertionError(f"Timed out waiting for HTTP 200 from {url}")
+
+
+def _request_json(
+    method: str,
+    url: str,
+    payload: dict | None = None,
+    headers: dict[str, str] | None = None,
+    timeout_seconds: int = 10,
+    insecure: bool = False,
+):
+    encoded_payload = None
+    request_headers = {"Content-Type": "application/json"}
+    if headers:
+        request_headers.update(headers)
+    if payload is not None:
+        encoded_payload = json.dumps(payload).encode()
+    request = urllib.request.Request(url, data=encoded_payload, headers=request_headers, method=method)
+    context = ssl._create_unverified_context() if insecure else None
+    with urllib.request.urlopen(request, timeout=timeout_seconds, context=context) as response:
+        return response.status, json.loads(response.read().decode())
 
 
 def _wait_for_services_healthy(project_name: str, env, timeout_seconds: int = 180, compose_files=None):
@@ -173,6 +195,88 @@ def test_monitoring_and_secure_edge_overlays_reach_healthy_state():
         assert json.loads(alertmanager_body)["config"]["original"]
         assert edge_health == b"ok\n"
     finally:
+        down_cmd = [
+            "docker",
+            "compose",
+            "-p",
+            project_name,
+        ]
+        for compose_file in compose_files:
+            down_cmd.extend(["-f", str(compose_file)])
+        down_cmd.extend(["down", "-v", "--remove-orphans"])
+        subprocess.run(
+            down_cmd,
+            cwd=REPO_ROOT,
+            env=compose_env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+
+def test_api_workflow_smoke():
+    project_name = f"homelabsec-smoke-api-{uuid.uuid4().hex[:8]}"
+    api_port = _find_free_port()
+    frontend_port = _find_free_port()
+    postgres_port = _find_free_port()
+    compose_files = [SMOKE_COMPOSE, SMOKE_WORKFLOW_COMPOSE]
+    smoke_fixture_dir = REPO_ROOT / "discovery" / "raw"
+    smoke_fixture_dir.mkdir(parents=True, exist_ok=True)
+    smoke_fixture_path = smoke_fixture_dir / f"smoke-{uuid.uuid4().hex}.xml"
+    smoke_fixture_path.write_text(FIXTURE_PATH.read_text())
+    compose_env = {
+        **os.environ,
+        "SMOKE_API_PORT": str(api_port),
+        "SMOKE_FRONTEND_PORT": str(frontend_port),
+        "SMOKE_POSTGRES_PORT": str(postgres_port),
+        "SCHEDULER_API_BASE": f"http://127.0.0.1:{api_port}",
+    }
+
+    try:
+        _run_compose(project_name, compose_env, "up", "-d", "--build", compose_files=compose_files)
+        services = _wait_for_services_healthy(project_name, compose_env, compose_files=compose_files)
+
+        _wait_for_http(f"http://127.0.0.1:{api_port}/health")
+        _wait_for_http(f"http://127.0.0.1:{frontend_port}/")
+
+        ingest_status, ingest_payload = _request_json(
+            "POST",
+            f"http://127.0.0.1:{api_port}/ingest/nmap_xml",
+            {"xml_path": f"/data/discovery/raw/{smoke_fixture_path.name}"},
+        )
+        assert ingest_status == 200
+        assert ingest_payload["hosts_parsed"] == 1
+        assert ingest_payload["observations_inserted"] == 1
+
+        _, assets_payload = _request_json("GET", f"http://127.0.0.1:{api_port}/assets")
+        assets = assets_payload["assets"]
+        assert len(assets) == 1
+        asset_id = assets[0]["asset_id"]
+
+        classify_status, classify_payload = _request_json(
+            "POST",
+            f"http://127.0.0.1:{api_port}/classify/{asset_id}",
+        )
+        assert classify_status == 200
+        assert classify_payload["classification"]["role"] == "web_server"
+
+        detect_status, detect_payload = _request_json("GET", f"http://127.0.0.1:{api_port}/detect_changes")
+        assert detect_status == 200
+        assert detect_payload["assets_with_changes"] >= 1
+
+        daily_status, daily_payload = _request_json("GET", f"http://127.0.0.1:{api_port}/report/daily")
+        assert daily_status == 200
+        assert daily_payload["recent_asset_count"] == 1
+
+        summary_status, summary_payload = _request_json("GET", f"http://127.0.0.1:{api_port}/report/summary")
+        assert summary_status == 200
+        assert summary_payload["assets"] == 1
+        assert summary_payload["network_observations"] >= 1
+
+        service_names = {service["Service"] for service in services}
+        assert {"postgres", "migrate", "brain", "scheduler", "frontend", "fake-ollama"}.issubset(service_names)
+    finally:
+        smoke_fixture_path.unlink(missing_ok=True)
         down_cmd = [
             "docker",
             "compose",
