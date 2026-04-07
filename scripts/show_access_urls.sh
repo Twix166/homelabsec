@@ -11,6 +11,13 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
+if [[ -f "$ROOT_DIR/.edge-runtime.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.edge-runtime.env"
+  set +a
+fi
+
 EDGE_HTTP_PORT="${EDGE_HTTP_PORT:-8081}"
 EDGE_HTTPS_PORT="${EDGE_HTTPS_PORT:-8443}"
 PROMETHEUS_HOST_PORT="${PROMETHEUS_HOST_PORT:-9090}"

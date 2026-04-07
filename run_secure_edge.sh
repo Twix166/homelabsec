@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_DIR="$ROOT_DIR/compose"
+RUNTIME_ENV_FILE="$ROOT_DIR/.edge-runtime.env"
 
 DEFAULT_HTTP_PORT=8081
 DEFAULT_HTTPS_PORT=8443
@@ -152,6 +153,12 @@ main() {
         docker compose -f compose.yaml -f compose.exposed.yaml up -d --build
     fi
   )
+
+  cat >"$RUNTIME_ENV_FILE" <<EOF
+EDGE_HTTP_PORT=${http_port}
+EDGE_HTTPS_PORT=${https_port}
+EDGE_AUTH_MODE=$([ "$USE_OIDC" = true ] && printf 'oidc' || printf 'basic')
+EOF
 
   cat <<EOF
 Secure edge available at:
