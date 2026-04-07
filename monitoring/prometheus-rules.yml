@@ -1,4 +1,14 @@
 groups:
+  - name: homelabsec-watchdog
+    rules:
+      - alert: HomelabSecWatchdog
+        expr: vector(1)
+        labels:
+          severity: info
+        annotations:
+          summary: HomelabSec alert routing watchdog
+          description: This always-firing alert exists so Alertmanager routing can be validated safely.
+
   - name: homelabsec-brain
     rules:
       - alert: HomelabSecBrainTargetDown

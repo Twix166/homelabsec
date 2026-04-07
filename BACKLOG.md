@@ -25,21 +25,20 @@ Use it as the working queue. `TODO.md` remains the broader status and historical
 
 ### Slice 1: Alert Routing
 Priority: `P0`
+Status: `done`
 
 Goal:
 - Make Prometheus alerts reach an operator instead of existing only inside Prometheus.
 
-Scope:
-- Add an Alertmanager overlay
-- Wire Prometheus alert delivery to Alertmanager
-- Add env-driven notification settings
-- Document the minimum local setup for email or webhook delivery
+Delivered:
+- Alertmanager is now part of the monitoring overlay
+- Prometheus now forwards alerts to Alertmanager
+- Notification settings are env-driven
+- Webhook and SMTP email routing are documented
+- A watchdog alert is present for routing validation
 
-Acceptance criteria:
-- Alert rules still load successfully
-- Prometheus shows Alertmanager as a configured target
-- At least one test alert can be routed to a configured receiver
-- Default base compose path still works without the alerting overlay
+Follow-on:
+- add automated validation against a disposable webhook receiver
 
 ### Slice 2: Monitoring Smoke Verification
 Priority: `P0`

@@ -434,20 +434,32 @@ docker compose -f compose.yaml -f compose.monitoring.yaml up -d --build
 This adds:
 
 - Prometheus on `127.0.0.1:9090`
+- Alertmanager on `127.0.0.1:9093`
 - Grafana on `127.0.0.1:3001`
 
 The monitoring overlay now also includes:
 
 - a provisioned `HomelabSec Overview` Grafana dashboard
+- Alertmanager for routed notifications
 - Prometheus alert rules for brain target availability
 - Prometheus alert rules for scheduler target availability
 - Prometheus alert rules for elevated brain 5xx rate and sustained high average latency
 - Prometheus alert rules for scheduler job failures and stale discovery runs
+- a `HomelabSecWatchdog` alert that always fires so alert routing can be tested safely
 
 Relevant variables:
 
 ```bash
 PROMETHEUS_HOST_PORT=9090
+ALERTMANAGER_HOST_PORT=9093
+ALERTMANAGER_DEFAULT_RECEIVER=null
+ALERTMANAGER_WEBHOOK_URL=
+ALERTMANAGER_EMAIL_TO=
+ALERTMANAGER_EMAIL_FROM=
+ALERTMANAGER_SMARTHOST=
+ALERTMANAGER_SMTP_AUTH_USERNAME=
+ALERTMANAGER_SMTP_AUTH_PASSWORD=
+ALERTMANAGER_SMTP_REQUIRE_TLS=true
 GRAFANA_HOST_PORT=3001
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=change-me-now
@@ -457,7 +469,32 @@ LOG_LEVEL=INFO
 
 Grafana is provisioned with a default Prometheus datasource and the `HomelabSec Overview` dashboard.
 
-The first alerting step is rule-based inside Prometheus. If alerts need to leave Prometheus and reach operators automatically, add Alertmanager or another notification path on top of this rule set.
+Alert routing now runs through Alertmanager. The monitoring overlay supports three receiver modes:
+
+- `ALERTMANAGER_DEFAULT_RECEIVER=null`
+- `ALERTMANAGER_DEFAULT_RECEIVER=webhook`
+- `ALERTMANAGER_DEFAULT_RECEIVER=email`
+
+Webhook example:
+
+```bash
+ALERTMANAGER_DEFAULT_RECEIVER=webhook
+ALERTMANAGER_WEBHOOK_URL=https://example.internal/alerts
+```
+
+Email example:
+
+```bash
+ALERTMANAGER_DEFAULT_RECEIVER=email
+ALERTMANAGER_EMAIL_TO=ops@example.com
+ALERTMANAGER_EMAIL_FROM=homelabsec@example.com
+ALERTMANAGER_SMARTHOST=smtp.example.com:587
+ALERTMANAGER_SMTP_AUTH_USERNAME=homelabsec@example.com
+ALERTMANAGER_SMTP_AUTH_PASSWORD=replace-me
+ALERTMANAGER_SMTP_REQUIRE_TLS=true
+```
+
+The default `null` receiver keeps the overlay safe to start even before notification settings are configured. The `HomelabSecWatchdog` alert exists so routing can be validated once a real receiver is configured.
 
 Useful operational commands:
 
