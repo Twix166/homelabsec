@@ -42,20 +42,20 @@ Follow-on:
 
 ### Slice 2: Monitoring Smoke Verification
 Priority: `P0`
+Status: `done`
 
 Goal:
 - Protect the monitoring and secure-edge overlays with repeatable verification.
 
-Scope:
-- Add smoke checks for Prometheus availability
-- Add smoke checks for Grafana availability
-- Add smoke checks that the provisioned dashboard exists
-- Add smoke checks that the secure edge still starts with the monitoring overlay present
+Delivered:
+- Added smoke checks for Prometheus availability
+- Added smoke checks for Grafana availability
+- Added smoke checks that the provisioned dashboard exists
+- Added smoke checks that the secure edge still starts with the monitoring overlay present
+- Isolated smoke compose overlays so they no longer collide with the real stack
 
-Acceptance criteria:
-- Monitoring overlay can be validated with an automated smoke path
-- Secure edge and monitoring overlays do not conflict during startup
-- Failures are explicit and actionable
+Follow-on:
+- add smoke assertions for Alertmanager receiver behavior using a disposable webhook target
 
 ### Slice 3: OIDC Overlay Validation
 Priority: `P1`

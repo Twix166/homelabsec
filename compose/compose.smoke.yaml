@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:17
-    container_name: homelabsec-smoke-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-homelabsec}
@@ -22,7 +21,6 @@ services:
   brain:
     build: ../brain
     image: homelabsec-smoke-brain:latest
-    container_name: homelabsec-smoke-brain
     restart: unless-stopped
     working_dir: /app
     environment:
@@ -54,7 +52,6 @@ services:
 
   migrate:
     image: homelabsec-smoke-brain:latest
-    container_name: homelabsec-smoke-migrate
     restart: "no"
     working_dir: /app
     command: ["python", "migrate.py"]
@@ -70,7 +67,6 @@ services:
 
   scheduler:
     build: ../scheduler
-    container_name: homelabsec-smoke-scheduler
     restart: unless-stopped
     environment:
       API_BASE: ${SCHEDULER_API_BASE:-http://127.0.0.1:${SMOKE_API_PORT:-18088}}
@@ -83,6 +79,7 @@ services:
       API_RETRY_DELAY_SECONDS: ${API_RETRY_DELAY_SECONDS:-5}
       STARTUP_API_TIMEOUT_SECONDS: ${STARTUP_API_TIMEOUT_SECONDS:-120}
       STARTUP_DISCOVERY: ${STARTUP_DISCOVERY:-false}
+      SCHEDULER_METRICS_PORT: ${SMOKE_SCHEDULER_METRICS_PORT:-19100}
     depends_on:
       brain:
         condition: service_healthy
@@ -102,7 +99,6 @@ services:
 
   frontend:
     build: ../frontend
-    container_name: homelabsec-smoke-frontend
     restart: unless-stopped
     depends_on:
       brain:

@@ -1,0 +1,39 @@
+services:
+  brain:
+    ports: !override
+      - "127.0.0.1:${SMOKE_API_PORT:-18088}:8088"
+
+  frontend:
+    ports: !reset []
+
+  edge:
+    build: ../edge
+    restart: unless-stopped
+    environment:
+      EDGE_AUTH_USERNAME: ${EDGE_AUTH_USERNAME:-admin}
+      EDGE_AUTH_PASSWORD: ${EDGE_AUTH_PASSWORD:-change-me-now}
+      EDGE_AUTH_MODE: ${EDGE_AUTH_MODE:-basic}
+      EDGE_SERVER_NAME: ${EDGE_SERVER_NAME:-localhost}
+      EDGE_TLS_MODE: ${EDGE_TLS_MODE:-self_signed}
+      EDGE_CERT_PATH: /etc/nginx/certs/tls.crt
+      EDGE_KEY_PATH: /etc/nginx/certs/tls.key
+    volumes:
+      - ../edge/certs:/etc/nginx/certs
+    depends_on:
+      frontend:
+        condition: service_healthy
+      brain:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-check-certificate -q -O /dev/null https://127.0.0.1/healthz || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    ports:
+      - "${SMOKE_EDGE_HTTP_PORT:-18081}:80"
+      - "${SMOKE_EDGE_HTTPS_PORT:-18443}:443"
