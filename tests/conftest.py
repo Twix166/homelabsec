@@ -120,30 +120,40 @@ def integration_db_url():
 
 
 @pytest.fixture(scope="session")
-def postgres_test_stack():
+def postgres_test_env():
     project_name = f"homelabsec-test-{uuid.uuid4().hex[:8]}"
-    down_cmd = [
-        "docker",
-        "compose",
-        "-p",
-        project_name,
-        "-f",
-        str(TEST_COMPOSE_PATH),
-        "down",
-        "-v",
-        "--remove-orphans",
-    ]
-    up_cmd = [
-        "docker",
-        "compose",
-        "-p",
-        project_name,
-        "-f",
-        str(TEST_COMPOSE_PATH),
-        "up",
-        "-d",
-        "postgres",
-    ]
+    return {
+        "project_name": project_name,
+        "compose_path": str(TEST_COMPOSE_PATH),
+        "down_cmd": [
+            "docker",
+            "compose",
+            "-p",
+            project_name,
+            "-f",
+            str(TEST_COMPOSE_PATH),
+            "down",
+            "-v",
+            "--remove-orphans",
+        ],
+        "up_cmd": [
+            "docker",
+            "compose",
+            "-p",
+            project_name,
+            "-f",
+            str(TEST_COMPOSE_PATH),
+            "up",
+            "-d",
+            "postgres",
+        ],
+    }
+
+
+@pytest.fixture(scope="session")
+def postgres_test_stack(postgres_test_env):
+    down_cmd = postgres_test_env["down_cmd"]
+    up_cmd = postgres_test_env["up_cmd"]
 
     subprocess.run(down_cmd, cwd=REPO_ROOT, check=False, capture_output=True, text=True)
     subprocess.run(up_cmd, cwd=REPO_ROOT, check=True, capture_output=True, text=True)

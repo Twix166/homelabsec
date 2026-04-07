@@ -52,6 +52,7 @@ CLASSIFICATION_FALLBACK_CONFIDENCE=0.10
 OBSERVATIONS_LIST_LIMIT=200
 FINGERPRINTS_LIST_LIMIT=200
 NOTABLE_ASSET_LIMIT=20
+ADMIN_STALE_SCAN_MINUTES=90
 LOG_LEVEL=INFO
 SCHEDULER_API_BASE=http://127.0.0.1:8088
 SCHEDULER_METRICS_PORT=9100
@@ -116,6 +117,41 @@ Still manual:
 - creating and testing a recurring backup plan
 - installing or updating custom Ollama models beyond the installer’s existence check
 
+## Backup And Restore
+
+HomelabSec now includes scripted Postgres backup and restore helpers for compose-based deployments.
+
+Backup:
+
+```bash
+./scripts/backup_db.sh
+```
+
+Restore:
+
+```bash
+./scripts/restore_db.sh /path/to/backup.sql
+```
+
+Both scripts target the compose-managed `postgres` service by default and can be pointed at another compose file or project with environment variables:
+
+```bash
+COMPOSE_FILE=/path/to/compose.yaml
+COMPOSE_PROJECT_NAME=homelabsec-test
+POSTGRES_DB=homelabsec
+POSTGRES_USER=homelabsec
+```
+
+The repo also includes automated integration coverage that performs a disposable backup and restore round trip, so this path is verified rather than only documented.
+
+## Operator Helpers
+
+To print the main local access URLs without manually inspecting compose files:
+
+```bash
+./scripts/show_access_urls.sh
+```
+
 ## Web dashboard
 
 A read-only web dashboard is available from the `frontend` service on port `8080`.
@@ -133,6 +169,15 @@ For ongoing schema changes, HomelabSec now uses versioned SQL migrations from `b
 
 The `init.sql` bootstrap remains in place for brand-new Postgres volumes, but it is no longer the only schema path.
 
+Migration authoring workflow:
+
+1. add a new versioned SQL file in `brain/migrations/`
+2. run `python3 brain/render_init_sql.py --write`
+3. run tests
+4. commit both the new migration and the regenerated `brain/init.sql`
+
+If `brain/init.sql` drifts from the migration set, `python3 brain/render_init_sql.py --check` fails and the automated tests catch it.
+
 Then open:
 
 ```text
@@ -142,6 +187,8 @@ http://localhost:8080
 The frontend proxies API requests internally to the `brain` service, so no backend changes are required.
 
 The summary cards on the dashboard are clickable. Selecting `Total assets`, `Observations`, `Fingerprints`, or `24h changes` opens a detail list for that category in the dashboard.
+
+The dashboard also includes an `Admin status` panel. It shows API status, scheduler freshness, summary counts, and quick links to the main operator surfaces.
 
 The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`. `brain` waits for Postgres readiness, and the dependent services wait for the API health endpoint before starting.
 

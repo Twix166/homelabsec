@@ -5,6 +5,7 @@ const endpoints = {
   assets: "/api/assets",
   observations: "/api/observations",
   fingerprints: "/api/fingerprints",
+  adminStatus: "/api/admin/status",
 };
 
 const elements = {
@@ -21,6 +22,7 @@ const elements = {
   detailTitle: document.getElementById("detail-title"),
   detailDescription: document.getElementById("detail-description"),
   detailList: document.getElementById("detail-list"),
+  adminStatus: document.getElementById("admin-status"),
   recentChanges: document.getElementById("recent-changes"),
   notableAssets: document.getElementById("notable-assets"),
   assetsTable: document.getElementById("assets-table"),
@@ -33,6 +35,7 @@ const dashboardState = {
   observations: [],
   fingerprints: [],
   changes: [],
+  adminStatus: null,
   activeSummary: "assets",
 };
 
@@ -164,6 +167,78 @@ function renderAssetsTable(assets) {
     .join("");
 }
 
+function buildQuickLinks() {
+  const { protocol, hostname, origin } = window.location;
+  const links = [
+    { label: "Dashboard", href: origin },
+    { label: "API health", href: `${protocol}//${hostname}:8088/health` },
+    { label: "Prometheus", href: "http://127.0.0.1:9090" },
+    { label: "Grafana", href: "http://127.0.0.1:3001" },
+    { label: "Alertmanager", href: "http://127.0.0.1:9093" },
+  ];
+
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    links.push({ label: "Secure edge", href: "https://localhost:18443" });
+  }
+
+  return links;
+}
+
+function renderAdminStatus(status) {
+  if (!status) {
+    setEmptyState(elements.adminStatus, "Admin status unavailable.");
+    return;
+  }
+
+  const freshness = status.scheduler_freshness || {};
+  const summary = status.summary || {};
+  const latestScan = status.latest_scan_run;
+  const quickLinks = buildQuickLinks()
+    .map(
+      (link) => `
+        <a class="pill" href="${escapeHtml(link.href)}" target="_blank" rel="noreferrer">${escapeHtml(link.label)}</a>
+      `
+    )
+    .join("");
+
+  elements.adminStatus.innerHTML = `
+    <article class="list-card">
+      <div class="list-topline">
+        <div class="list-title">API status</div>
+        <span class="pill ${freshness.status === "stale" ? "high" : "low"}">${escapeHtml(status.api_status || "unknown")}</span>
+      </div>
+      <div class="list-meta">
+        <span>Generated ${escapeHtml(formatDate(status.generated_at))}</span>
+        <span>Scheduler ${escapeHtml(freshness.status || "unknown")}</span>
+        <span>Stale after ${escapeHtml(freshness.stale_after_minutes ?? "-")} min</span>
+        <span>Latest scan age ${escapeHtml(freshness.age_minutes ?? "-")} min</span>
+      </div>
+      <div class="list-meta">
+        <span>${escapeHtml(summary.assets ?? 0)} assets</span>
+        <span>${escapeHtml(summary.network_observations ?? 0)} observations</span>
+        <span>${escapeHtml(summary.fingerprints ?? 0)} fingerprints</span>
+      </div>
+      ${
+        latestScan
+          ? `
+            <div class="list-meta mono">
+              <span>${escapeHtml(latestScan.scan_type || "scan")}</span>
+              <span>${escapeHtml(latestScan.status || "unknown")}</span>
+              <span>${escapeHtml(formatDate(latestScan.completed_at || latestScan.started_at))}</span>
+              <span>${escapeHtml(latestScan.scan_run_id)}</span>
+            </div>
+          `
+          : `
+            <div class="empty-state">No scan runs recorded yet.</div>
+          `
+      }
+      <div class="list-meta">
+        ${quickLinks}
+      </div>
+    </article>
+  `;
+}
+
 function renderDetailCards(items, renderItem, emptyMessage) {
   if (!items.length) {
     setEmptyState(elements.detailList, emptyMessage);
@@ -291,19 +366,21 @@ async function loadDashboard() {
   elements.refreshButton.textContent = "Refreshing";
 
   try {
-    const [health, summary, daily, assets, observations, fingerprints] = await Promise.all([
+    const [health, summary, daily, assets, observations, fingerprints, adminStatus] = await Promise.all([
       fetchJson(endpoints.health),
       fetchJson(endpoints.summary),
       fetchJson(endpoints.daily),
       fetchJson(endpoints.assets),
       fetchJson(endpoints.observations),
       fetchJson(endpoints.fingerprints),
+      fetchJson(endpoints.adminStatus),
     ]);
 
     dashboardState.assets = assets.assets || [];
     dashboardState.observations = observations.observations || [];
     dashboardState.fingerprints = fingerprints.fingerprints || [];
     dashboardState.changes = daily.recent_changes || [];
+    dashboardState.adminStatus = adminStatus;
 
     elements.healthStatus.textContent = health.status || "ok";
     elements.reportGenerated.textContent = formatDate(daily.report_generated_at);
@@ -315,6 +392,7 @@ async function loadDashboard() {
     renderRecentChanges(dashboardState.changes);
     renderNotableAssets(daily.notable_assets || []);
     renderAssetsTable(dashboardState.assets);
+    renderAdminStatus(dashboardState.adminStatus);
     renderSummaryDetail(dashboardState.activeSummary);
   } catch (error) {
     elements.healthStatus.textContent = "error";
@@ -322,6 +400,7 @@ async function loadDashboard() {
     elements.detailTitle.textContent = "Detail view";
     elements.detailDescription.textContent = "Click a summary card to list the underlying items.";
     setEmptyState(elements.detailList, `Failed to load detail data: ${error.message}`);
+    setEmptyState(elements.adminStatus, `Failed to load admin status: ${error.message}`);
     setEmptyState(elements.recentChanges, `Failed to load dashboard: ${error.message}`);
     setEmptyState(elements.notableAssets, "Dashboard data unavailable.");
     renderAssetsTable([]);

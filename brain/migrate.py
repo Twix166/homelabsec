@@ -4,7 +4,7 @@ from pathlib import Path
 
 import psycopg
 
-from brainlib.config import DATABASE_URL
+from brainlib.config import CONFIG
 from brainlib.logging_utils import configure_logging, log_event
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
@@ -49,7 +49,7 @@ def apply_migration(conn: psycopg.Connection, path: Path) -> None:
 
 
 def main() -> None:
-    with psycopg.connect(DATABASE_URL) as conn:
+    with psycopg.connect(CONFIG.database_url) as conn:
         ensure_migrations_table(conn)
         existing_versions = applied_versions(conn)
 

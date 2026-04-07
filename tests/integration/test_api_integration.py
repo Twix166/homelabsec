@@ -65,6 +65,7 @@ def test_schema_migrations_table_is_initialized(integration_brain_module, integr
             cur.execute("SELECT version FROM schema_migrations ORDER BY version")
             versions = [row[0] for row in cur.fetchall()]
 
+    assert "0000_schema_migrations" in versions
     assert "0001_initial" in versions
 
 
@@ -204,3 +205,17 @@ def test_detect_changes_is_idempotent_for_same_fingerprint_pair(client, integrat
             after_second_count = cur.fetchone()[0]
 
     assert after_second_count == after_first_count
+
+
+def test_admin_status_endpoint_reports_scheduler_freshness(client):
+    ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
+    assert ingest_response.status_code == 200
+
+    response = client.get("/admin/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["api_status"] == "ok"
+    assert set(payload["summary"].keys()) == {"assets", "network_observations", "fingerprints"}
+    assert payload["scheduler_freshness"]["status"] in {"fresh", "stale", "unknown"}
+    assert payload["latest_scan_run"]["scan_type"] == "nmap_xml_ingest"

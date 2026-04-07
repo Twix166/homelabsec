@@ -1,4 +1,3 @@
-import os
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -7,6 +6,7 @@ from pathlib import Path
 import requests
 import schedule
 
+from config import CONFIG
 from logging_utils import configure_logging, log_event
 from metrics import (
     record_api_request,
@@ -17,19 +17,18 @@ from metrics import (
     start_metrics_server,
 )
 
-API_BASE = os.environ.get("API_BASE", "http://brain:8088")
-TARGET_SUBNET = os.environ.get("TARGET_SUBNET", "10.0.0.0/24")
-DISCOVERY_INTERVAL_MINUTES = int(os.environ.get("DISCOVERY_INTERVAL_MINUTES", "30"))
-REPORT_HOUR_UTC = int(os.environ.get("REPORT_HOUR_UTC", "8"))
-DISCOVERY_DIR = Path(os.environ.get("DISCOVERY_DIR", "/data/discovery/raw"))
-TOP_PORTS = os.environ.get("TOP_PORTS", "100")
-API_RETRY_ATTEMPTS = int(os.environ.get("API_RETRY_ATTEMPTS", "5"))
-API_RETRY_DELAY_SECONDS = int(os.environ.get("API_RETRY_DELAY_SECONDS", "5"))
-STARTUP_API_TIMEOUT_SECONDS = int(os.environ.get("STARTUP_API_TIMEOUT_SECONDS", "120"))
-STARTUP_DISCOVERY = os.environ.get("STARTUP_DISCOVERY", "false").strip().lower() in {"1", "true", "yes", "on"}
-LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
-SCHEDULER_METRICS_PORT = int(os.environ.get("SCHEDULER_METRICS_PORT", "9100"))
-logger = configure_logging("homelabsec.scheduler", LOG_LEVEL)
+API_BASE = CONFIG.api_base
+TARGET_SUBNET = CONFIG.target_subnet
+DISCOVERY_INTERVAL_MINUTES = CONFIG.discovery_interval_minutes
+REPORT_HOUR_UTC = CONFIG.report_hour_utc
+DISCOVERY_DIR = Path(CONFIG.discovery_dir)
+TOP_PORTS = CONFIG.top_ports
+API_RETRY_ATTEMPTS = CONFIG.api_retry_attempts
+API_RETRY_DELAY_SECONDS = CONFIG.api_retry_delay_seconds
+STARTUP_API_TIMEOUT_SECONDS = CONFIG.startup_api_timeout_seconds
+STARTUP_DISCOVERY = CONFIG.startup_discovery
+SCHEDULER_METRICS_PORT = CONFIG.scheduler_metrics_port
+logger = configure_logging("homelabsec.scheduler", CONFIG.log_level)
 
 
 def log(message: str, event: str = "scheduler_log", level: str = "info", **fields) -> None:

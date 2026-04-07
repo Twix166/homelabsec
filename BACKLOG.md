@@ -96,96 +96,85 @@ Follow-on:
 
 ### Slice 5: Dashboard Contract Expansion
 Priority: `P1`
+Status: `done`
 
 Goal:
 - Protect the dashboard as a user-facing surface rather than only protecting backend endpoints.
 
-Scope:
-- Add regression checks for:
-  - clickable summary cards
-  - summary detail list rendering
-  - dashboard loading against expected API payloads
-- Lock down the new list endpoints used by the frontend
+Delivered:
+- Added regression checks for clickable summary cards and detail surfaces
+- Locked down `/observations`, `/fingerprints`, and `/admin/status` contracts
+- Added static frontend contract checks for the dashboard summary wiring
 
-Acceptance criteria:
-- Frontend-facing regressions are caught before UAT
-- Summary-card behavior is covered by automated regression checks
+Follow-on:
+- add browser-driven frontend rendering tests if the project adopts a JS test runner
 
 ### Slice 6: Backend Entry Point Cleanup
 Priority: `P2`
+Status: `done`
 
 Goal:
 - Finish the modularization pass so `brain/app.py` becomes a thin composition layer.
 
-Scope:
-- Remove any remaining business logic still embedded in `app.py`
-- Standardize route wiring, dependencies, and error translation
-- Keep route contracts unchanged
-
-Acceptance criteria:
-- `app.py` is primarily route registration and app setup
-- Core workflow logic lives in focused internal modules
-- Existing endpoint behavior stays unchanged
+Delivered:
+- Extracted inventory queries and fingerprint detail logic into `brainlib/inventory.py`
+- Extracted system helpers into `brainlib/system.py`
+- Added `brainlib/admin.py` for operator-facing status data
+- Kept `app.py` focused on middleware, route wiring, and DB context boundaries
 
 ### Slice 7: Config Validation Layer
 Priority: `P2`
+Status: `done`
 
 Goal:
 - Make startup failures more predictable and easier to diagnose.
 
-Scope:
-- Validate required env vars centrally
-- Validate incompatible configuration combinations early
-- Standardize defaults and config error messages
-
-Acceptance criteria:
-- Invalid runtime configuration fails fast with clear messages
-- Shared configuration logic is used consistently by `brain`, `scheduler`, `migrate`, and helper scripts where practical
+Delivered:
+- Added validated `BrainConfig` loading for `brain` and `migrate`
+- Added validated scheduler config loading in `scheduler/config.py`
+- Added unit coverage for invalid configuration paths
+- Added `ADMIN_STALE_SCAN_MINUTES` as a shared operator-facing runtime knob
 
 ### Slice 8: DB Migration Discipline
 Priority: `P2`
+Status: `done`
 
 Goal:
 - Reduce schema drift risk as the project evolves.
 
-Scope:
-- Add a documented migration authoring workflow
-- Add verification that fresh bootstrap and migration-applied schemas stay aligned
-- Add a test or validation path that fails if migration state is incomplete
-
-Acceptance criteria:
-- New schema changes have one obvious path
-- Drift between `init.sql` and migrations becomes detectable
+Delivered:
+- Added `0000_schema_migrations.sql` so the bootstrap path is fully migration-backed
+- Added `brain/render_init_sql.py` to render and check `init.sql` from versioned migrations
+- Added automated drift detection for bootstrap schema sync
 
 ### Slice 9: Backup And Restore Drill
 Priority: `P2`
+Status: `done`
 
 Goal:
 - Turn backup guidance into a verified operational capability.
 
-Scope:
-- Add a scripted backup flow
-- Add a scripted restore flow against a disposable stack
-- Document the validation procedure
-
-Acceptance criteria:
-- Backup and restore can be tested end to end
-- Restore instructions are verified, not only described
+Delivered:
+- Added `scripts/backup_db.sh`
+- Added `scripts/restore_db.sh`
+- Added integration coverage that backs up and restores a disposable Postgres stack
 
 ### Slice 10: Admin UX Improvements
 Priority: `P3`
+Status: `done`
 
 Goal:
 - Make the product easier to operate during UAT and early deployments.
 
-Scope:
-- Add a lightweight admin status view for service health and scheduler freshness
-- Surface monitoring and edge URLs more clearly in docs or helper scripts
-- Add small deployment helper scripts where they reduce operator error
+Delivered:
+- Added `/admin/status`
+- Added a dashboard admin status panel with scheduler freshness and quick links
+- Added `scripts/show_access_urls.sh` for operator-friendly endpoint discovery
 
-Acceptance criteria:
-- Common operator tasks require less manual compose and log inspection
-- No existing endpoints are broken
+Next priority:
+- browser-level UI testing
+- richer alert delivery validation
+- backup retention policy and off-host storage
 
 ## Suggested Execution Order
 
