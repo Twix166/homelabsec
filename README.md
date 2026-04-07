@@ -253,6 +253,23 @@ EDGE_OIDC_SCOPE=openid email profile
 EDGE_OIDC_WHITELIST_DOMAINS=
 ```
 
+OIDC operator notes:
+
+- `./run_secure_edge.sh --oidc` now validates the required OIDC variables before starting compose
+- if `EDGE_OIDC_REDIRECT_URL` is unset, the launcher fills it automatically as `https://localhost:<chosen-https-port>/oauth2/callback`
+- `EDGE_OIDC_ISSUER_URL` must use `https://` for real deployments, with `http://localhost` allowed only for local test IdPs
+- `EDGE_OIDC_COOKIE_SECRET` must be set and at least 16 characters long
+
+Reference provider setup pattern:
+
+1. Create an OIDC client in your identity provider with redirect URI `https://localhost:8443/oauth2/callback`
+2. Set `EDGE_OIDC_ISSUER_URL` to the provider issuer URL
+3. Set `EDGE_OIDC_CLIENT_ID` and `EDGE_OIDC_CLIENT_SECRET` from that client
+4. Set `EDGE_OIDC_COOKIE_SECRET` to a strong random secret
+5. Start the edge with `./run_secure_edge.sh --oidc`
+
+For local validation only, you can point the issuer at a localhost-hosted IdP and let the launcher fill the callback URL for the chosen HTTPS port.
+
 TLS modes:
 
 - `EDGE_TLS_MODE=self_signed` generates a self-signed certificate automatically on first start

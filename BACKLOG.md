@@ -59,19 +59,19 @@ Follow-on:
 
 ### Slice 3: OIDC Overlay Validation
 Priority: `P1`
+Status: `done`
 
 Goal:
 - Reduce risk in the new stronger-auth path.
 
-Scope:
-- Add compose validation coverage for the OIDC overlay
-- Add documentation for a concrete reference provider setup
-- Add startup validation for required OIDC variables
+Delivered:
+- Added launcher-side validation for required OIDC variables
+- Added targeted compose validation coverage for the OIDC overlay
+- Added a concrete reference setup section in the README
+- Kept the basic-auth path unchanged
 
-Acceptance criteria:
-- OIDC overlay config renders cleanly with documented example values
-- Missing required OIDC settings fail clearly
-- README contains a copy-pasteable reference setup section
+Follow-on:
+- add an isolated smoke path for oauth2-proxy once a disposable test IdP is available
 
 ### Slice 4: API Smoke Coverage
 Priority: `P1`

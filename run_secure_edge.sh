@@ -10,6 +10,35 @@ FALLBACK_HTTP_PORT=18081
 FALLBACK_HTTPS_PORT=18443
 USE_OIDC=false
 
+require_env() {
+  local name="$1"
+  if [ -z "${!name:-}" ]; then
+    echo "Missing required environment variable: ${name}" >&2
+    exit 1
+  fi
+}
+
+validate_oidc_env() {
+  require_env "EDGE_OIDC_ISSUER_URL"
+  require_env "EDGE_OIDC_CLIENT_ID"
+  require_env "EDGE_OIDC_CLIENT_SECRET"
+  require_env "EDGE_OIDC_COOKIE_SECRET"
+
+  case "${EDGE_OIDC_ISSUER_URL}" in
+    https://*|http://localhost*|http://127.0.0.1*)
+      ;;
+    *)
+      echo "EDGE_OIDC_ISSUER_URL must use https, or localhost for local testing." >&2
+      exit 1
+      ;;
+  esac
+
+  if [ "${#EDGE_OIDC_COOKIE_SECRET}" -lt 16 ]; then
+    echo "EDGE_OIDC_COOKIE_SECRET must be at least 16 characters." >&2
+    exit 1
+  fi
+}
+
 port_in_use() {
   local port="$1"
   ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .
@@ -114,6 +143,7 @@ main() {
   (
     cd "$COMPOSE_DIR"
     if [ "$USE_OIDC" = true ]; then
+      validate_oidc_env
       EDGE_HTTP_PORT="$http_port" EDGE_HTTPS_PORT="$https_port" \
       EDGE_OIDC_REDIRECT_URL="${EDGE_OIDC_REDIRECT_URL:-https://localhost:${https_port}/oauth2/callback}" \
         docker compose -f compose.yaml -f compose.exposed.yaml -f compose.oidc.yaml up -d --build
