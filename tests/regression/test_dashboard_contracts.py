@@ -164,11 +164,13 @@ def test_admin_status_contract_shape(populated_dashboard_data):
     assert {
         "generated_at",
         "api_status",
+        "version",
         "summary",
         "latest_scan_run",
         "scheduler_freshness",
     } == set(payload.keys())
     assert payload["api_status"] == "ok"
+    assert payload["version"] == "0.1.0"
     assert set(payload["summary"].keys()) == {"assets", "network_observations", "fingerprints"}
     assert {
         "status",

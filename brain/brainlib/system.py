@@ -5,10 +5,15 @@ from typing import Any
 
 from brainlib.metrics import render_metrics
 from brainlib.ollama import OllamaError, chat_json
+from brainlib.versioning import current_version
 
 
 def health_status() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def version_status() -> dict[str, str]:
+    return {"version": current_version()}
 
 
 def metrics_payload() -> str:

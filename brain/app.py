@@ -27,7 +27,7 @@ from brainlib.logging_utils import configure_logging, log_event
 from brainlib.metrics import record_http_request
 from brainlib.ollama import OllamaError
 from brainlib.reports import daily_report, summary_report
-from brainlib.system import health_status, metrics_payload, ollama_test_payload
+from brainlib.system import health_status, metrics_payload, ollama_test_payload, version_status
 
 app = FastAPI(title="HomelabSec Brain")
 logger = configure_logging("homelabsec.brain")
@@ -81,6 +81,11 @@ def health():
 @app.get("/metrics")
 def metrics():
     return Response(metrics_payload(), media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
+@app.get("/version")
+def version():
+    return version_status()
 
 
 @app.post("/ollama/test")

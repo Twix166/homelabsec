@@ -6,6 +6,7 @@ import psycopg
 
 from brainlib.config import ADMIN_STALE_SCAN_MINUTES, utcnow_iso
 from brainlib.reports import summary_report
+from brainlib.versioning import current_version
 
 
 def admin_status(conn: psycopg.Connection) -> dict[str, Any]:
@@ -53,6 +54,7 @@ def admin_status(conn: psycopg.Connection) -> dict[str, Any]:
     return {
         "generated_at": utcnow_iso(),
         "api_status": "ok",
+        "version": current_version(),
         "summary": summary,
         "latest_scan_run": latest_scan,
         "scheduler_freshness": freshness,

@@ -57,6 +57,13 @@ def test_health_endpoint(client):
     assert response.json() == {"status": "ok"}
 
 
+def test_version_endpoint(client):
+    response = client.get("/version")
+
+    assert response.status_code == 200
+    assert response.json() == {"version": "0.1.0"}
+
+
 def test_schema_migrations_table_is_initialized(integration_brain_module, integration_db_url):
     import psycopg
 
@@ -216,6 +223,7 @@ def test_admin_status_endpoint_reports_scheduler_freshness(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["api_status"] == "ok"
+    assert payload["version"] == "0.1.0"
     assert set(payload["summary"].keys()) == {"assets", "network_observations", "fingerprints"}
     assert payload["scheduler_freshness"]["status"] in {"fresh", "stale", "unknown"}
     assert payload["latest_scan_run"]["scan_type"] == "nmap_xml_ingest"

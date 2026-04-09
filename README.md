@@ -2,6 +2,8 @@
 
 HomelabSec is a local homelab security inventory and monitoring system.
 
+Current release version: `0.1.0`
+
 It currently supports:
 
 - LAN discovery with Nmap
@@ -107,6 +109,7 @@ Installer guarantees on success:
 - `brain`, `scheduler`, and `frontend` started
 - `/health` responded
 - `/report/summary` returned a schema-dependent payload
+- `/version` reports the application release version
 
 Still manual:
 
@@ -143,6 +146,26 @@ POSTGRES_USER=homelabsec
 ```
 
 The repo also includes automated integration coverage that performs a disposable backup and restore round trip, so this path is verified rather than only documented.
+
+## Versioning
+
+HomelabSec now uses semantic versioning.
+
+Current version source of truth:
+
+- [brain/VERSION](/home/rbalm/homelabsec/brain/VERSION)
+
+Runtime visibility:
+
+- `GET /version` returns the current application version
+- `/admin/status` includes the current application version
+
+Version bump workflow:
+
+1. update `brain/VERSION`
+2. run tests
+3. commit the change
+4. create a matching Git tag such as `v0.1.0`
 
 ## Operator Helpers
 
