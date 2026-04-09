@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/Twix16/homelabsec.git}"
+REPO_URL="${REPO_URL:-https://github.com/Twix166/homelabsec.git}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/homelabsec}"
 BRANCH="${BRANCH:-main}"
+API_BASE_URL="${API_BASE_URL:-http://localhost:8088}"
+WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-180}"
+SKIP_OLLAMA_VALIDATION="${SKIP_OLLAMA_VALIDATION:-false}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -28,6 +31,96 @@ detect_compose() {
   echo ""
 }
 
+sync_env_file() {
+  if [[ -f .env ]]; then
+    if [[ ! -d compose ]]; then
+      echo "Error: compose directory not found in $INSTALL_DIR" >&2
+      exit 1
+    fi
+
+    if [[ ! -f compose/.env ]] || ! cmp -s .env compose/.env; then
+      log "Syncing .env into compose/.env"
+      cp .env compose/.env
+    else
+      log "compose/.env already matches .env"
+    fi
+  fi
+}
+
+load_env_file() {
+  if [[ -f .env ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env
+    set +a
+  fi
+}
+
+wait_for_http() {
+  local url="$1"
+  local label="$2"
+  local deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
+
+  while (( SECONDS < deadline )); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      log "$label is ready"
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Error: timed out waiting for $label at $url" >&2
+  return 1
+}
+
+validate_api_schema() {
+  local summary_url="${API_BASE_URL}/report/summary"
+  local payload
+
+  if ! payload="$(curl -fsS "$summary_url")"; then
+    echo "Error: API schema validation failed at $summary_url" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$payload" | grep -q '"assets"' || {
+    echo "Error: API schema validation returned an unexpected payload: $payload" >&2
+    return 1
+  }
+}
+
+validate_ollama() {
+  if [[ "${SKIP_OLLAMA_VALIDATION}" =~ ^(1|true|yes|on)$ ]]; then
+    log "Skipping Ollama validation"
+    return 0
+  fi
+
+  local ollama_host_url="${OLLAMA_HOST_URL:-http://localhost:11434}"
+  local ollama_model="${OLLAMA_MODEL:-homelabsec-classifier}"
+  local tags_url="${ollama_host_url%/}/api/tags"
+  local payload
+
+  log "Validating Ollama connectivity at ${ollama_host_url}"
+  if ! payload="$(curl -fsS "$tags_url")"; then
+    echo "Error: could not reach Ollama at $ollama_host_url" >&2
+    echo "Make sure the Ollama service is running and reachable, or set SKIP_OLLAMA_VALIDATION=true if you want to defer this check." >&2
+    return 1
+  fi
+
+  printf '%s\n' "$payload" | grep -q "\"name\":\"${ollama_model}" || {
+    echo "Error: Ollama is reachable but model '$ollama_model' was not found." >&2
+    echo "Install or pull the model, then re-run the installer." >&2
+    echo "Example: ollama pull $ollama_model" >&2
+    return 1
+  }
+
+  log "Ollama model '$ollama_model' is available"
+}
+
+run_migrations() {
+  log "Running database migrations"
+  compose_cmd run --rm migrate
+}
+
 log "Checking prerequisites"
 need_cmd git
 need_cmd curl
@@ -44,6 +137,20 @@ if [[ -z "$COMPOSE_CMD" ]]; then
   echo "Install Docker Compose plugin or docker-compose first." >&2
   exit 1
 fi
+
+compose_cmd() {
+  if [[ ! -f "$INSTALL_DIR/.env" ]]; then
+    echo "Error: expected env file at $INSTALL_DIR/.env" >&2
+    return 1
+  fi
+
+  if [[ "$COMPOSE_CMD" == "docker compose" ]]; then
+    docker compose --env-file ../.env "$@"
+    return
+  fi
+
+  docker-compose --env-file ../.env "$@"
+}
 
 log "Using compose command: $COMPOSE_CMD"
 
@@ -64,22 +171,27 @@ if [[ ! -f .env && -f .env.example ]]; then
   cp .env.example .env
 fi
 
+load_env_file
+
 mkdir -p discovery/raw
 
-if [[ ! -f compose/.env && -f .env ]]; then
-  log "Copying .env into compose/.env for docker compose"
-  cp .env compose/.env
-fi
+sync_env_file
+
+validate_ollama
 
 log "Starting containers"
 cd compose
-$COMPOSE_CMD up -d
+compose_cmd up -d --build postgres
 
-log "Waiting briefly for services"
-sleep 5
+run_migrations
 
-log "Health check"
-curl -fsS http://localhost:8088/health || true
+compose_cmd up -d --build brain scheduler frontend
+
+log "Waiting for API health"
+wait_for_http "${API_BASE_URL}/health" "API health endpoint"
+
+log "Validating schema-dependent API endpoint"
+validate_api_schema
 
 cat <<EOF
 
@@ -90,14 +202,16 @@ Repo location:
 
 Useful commands:
   cd $INSTALL_DIR/compose
-  $COMPOSE_CMD ps
-  $COMPOSE_CMD logs -f brain
-  curl http://localhost:8088/health
+  $COMPOSE_CMD --env-file ../.env ps
+  $COMPOSE_CMD --env-file ../.env logs -f brain
+  curl ${API_BASE_URL}/health
 
 Next steps:
   1. Edit $INSTALL_DIR/.env if needed
   2. Re-run:
-       cd $INSTALL_DIR/compose && $COMPOSE_CMD up -d
-  3. Review README.md for scheduler and scanning setup
+       cd $INSTALL_DIR
+       ./install.sh
+  3. Review README.md for scheduler, scanning, and Ollama setup
+  4. Treat $INSTALL_DIR/.env as the source of truth; the installer will resync compose/.env automatically
 
 EOF

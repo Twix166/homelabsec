@@ -11,6 +11,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = REPO_ROOT / "brain" / "app.py"
+MIGRATE_PATH = REPO_ROOT / "brain" / "migrate.py"
+BRAIN_DIR = APP_PATH.parent
 TEST_COMPOSE_PATH = REPO_ROOT / "compose" / "compose.test.yaml"
 TEST_DB_PORT = 55432
 
@@ -36,6 +38,12 @@ def _install_stub_modules():
             self.args = args
             self.kwargs = kwargs
 
+        def middleware(self, *args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
         def get(self, *args, **kwargs):
             def decorator(func):
                 return func
@@ -54,8 +62,21 @@ def _install_stub_modules():
             self.status_code = status_code
             self.detail = detail
 
+    class Request:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class Response:
+        def __init__(self, content=None, media_type=None, status_code=200):
+            self.content = content
+            self.media_type = media_type
+            self.status_code = status_code
+
     fastapi_stub.FastAPI = FastAPI
     fastapi_stub.HTTPException = HTTPException
+    fastapi_stub.Request = Request
+    fastapi_stub.Response = Response
 
     pydantic_stub = types.ModuleType("pydantic")
 
@@ -74,6 +95,8 @@ def _install_stub_modules():
 
 def _load_brain_module(module_name: str):
     _reset_modules([module_name])
+    if str(BRAIN_DIR) not in sys.path:
+        sys.path.insert(0, str(BRAIN_DIR))
     os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
     os.environ.setdefault("OLLAMA_URL", "http://ollama.test")
     os.environ.setdefault("OLLAMA_MODEL", "homelabsec-classifier")
@@ -97,30 +120,40 @@ def integration_db_url():
 
 
 @pytest.fixture(scope="session")
-def postgres_test_stack():
+def postgres_test_env():
     project_name = f"homelabsec-test-{uuid.uuid4().hex[:8]}"
-    down_cmd = [
-        "docker",
-        "compose",
-        "-p",
-        project_name,
-        "-f",
-        str(TEST_COMPOSE_PATH),
-        "down",
-        "-v",
-        "--remove-orphans",
-    ]
-    up_cmd = [
-        "docker",
-        "compose",
-        "-p",
-        project_name,
-        "-f",
-        str(TEST_COMPOSE_PATH),
-        "up",
-        "-d",
-        "postgres",
-    ]
+    return {
+        "project_name": project_name,
+        "compose_path": str(TEST_COMPOSE_PATH),
+        "down_cmd": [
+            "docker",
+            "compose",
+            "-p",
+            project_name,
+            "-f",
+            str(TEST_COMPOSE_PATH),
+            "down",
+            "-v",
+            "--remove-orphans",
+        ],
+        "up_cmd": [
+            "docker",
+            "compose",
+            "-p",
+            project_name,
+            "-f",
+            str(TEST_COMPOSE_PATH),
+            "up",
+            "-d",
+            "postgres",
+        ],
+    }
+
+
+@pytest.fixture(scope="session")
+def postgres_test_stack(postgres_test_env):
+    down_cmd = postgres_test_env["down_cmd"]
+    up_cmd = postgres_test_env["up_cmd"]
 
     subprocess.run(down_cmd, cwd=REPO_ROOT, check=False, capture_output=True, text=True)
     subprocess.run(up_cmd, cwd=REPO_ROOT, check=True, capture_output=True, text=True)
@@ -150,5 +183,19 @@ def integration_brain_module(postgres_test_stack, integration_db_url):
             time.sleep(1)
     else:
         raise RuntimeError("Timed out waiting for test Postgres to become ready")
+
+    subprocess.run(
+        ["python3", str(MIGRATE_PATH)],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "DATABASE_URL": integration_db_url,
+            "OLLAMA_URL": "http://ollama.test",
+            "OLLAMA_MODEL": "homelabsec-classifier",
+        },
+    )
 
     return _load_brain_module("brain_app_integration_under_test")

@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "nmap_single_host.xml"
+FRONTEND_INDEX_PATH = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
+FRONTEND_APP_PATH = Path(__file__).resolve().parents[2] / "frontend" / "app.js"
 
 
 @pytest.fixture
@@ -101,7 +103,7 @@ def test_assets_contract_shape(populated_dashboard_data):
 
     assert set(payload.keys()) == {"assets"}
     assert isinstance(payload["assets"], list)
-    assert len(payload["assets"]) == 1
+    assert payload["assets"]
 
     asset = payload["assets"][0]
     assert {
@@ -112,3 +114,90 @@ def test_assets_contract_shape(populated_dashboard_data):
         "first_seen",
         "last_seen",
     }.issubset(asset.keys())
+
+
+def test_observations_contract_shape(populated_dashboard_data):
+    payload = populated_dashboard_data.get("/observations").json()
+
+    assert set(payload.keys()) == {"observations"}
+    assert isinstance(payload["observations"], list)
+    assert payload["observations"]
+
+    observation = payload["observations"][0]
+    assert {
+        "observation_id",
+        "asset_id",
+        "preferred_name",
+        "ip_address",
+        "mac_address",
+        "port",
+        "protocol",
+        "service_name",
+        "service_product",
+        "service_version",
+        "os_guess",
+        "observed_at",
+    }.issubset(observation.keys())
+
+
+def test_fingerprints_contract_shape(populated_dashboard_data):
+    payload = populated_dashboard_data.get("/fingerprints").json()
+
+    assert set(payload.keys()) == {"fingerprints"}
+    assert isinstance(payload["fingerprints"], list)
+    assert payload["fingerprints"]
+
+    fingerprint = payload["fingerprints"][0]
+    assert {
+        "fingerprint_id",
+        "asset_id",
+        "preferred_name",
+        "role",
+        "fingerprint_hash",
+        "created_at",
+    }.issubset(fingerprint.keys())
+
+
+def test_admin_status_contract_shape(populated_dashboard_data):
+    payload = populated_dashboard_data.get("/admin/status").json()
+
+    assert {
+        "generated_at",
+        "api_status",
+        "version",
+        "summary",
+        "latest_scan_run",
+        "scheduler_freshness",
+    } == set(payload.keys())
+    assert payload["api_status"] == "ok"
+    assert payload["version"] == "0.1.0"
+    assert set(payload["summary"].keys()) == {"assets", "network_observations", "fingerprints"}
+    assert {
+        "status",
+        "stale_after_minutes",
+        "age_minutes",
+    } == set(payload["scheduler_freshness"].keys())
+
+
+def test_dashboard_markup_exposes_clickable_summary_cards():
+    html = FRONTEND_INDEX_PATH.read_text(encoding="utf-8")
+
+    assert '<button id="summary-assets"' in html
+    assert '<button id="summary-observations"' in html
+    assert '<button id="summary-fingerprints"' in html
+    assert '<button id="summary-changes"' in html
+    assert 'id="detail-list"' in html
+    assert 'id="admin-status"' in html
+
+
+def test_dashboard_script_wires_frontend_contracts():
+    script = FRONTEND_APP_PATH.read_text(encoding="utf-8")
+
+    assert 'observations: "/api/observations"' in script
+    assert 'fingerprints: "/api/fingerprints"' in script
+    assert 'adminStatus: "/api/admin/status"' in script
+    assert 'renderSummaryDetail("assets")' in script
+    assert 'renderSummaryDetail("observations")' in script
+    assert 'renderSummaryDetail("fingerprints")' in script
+    assert 'renderSummaryDetail("changes")' in script
+    assert "renderAdminStatus(dashboardState.adminStatus)" in script

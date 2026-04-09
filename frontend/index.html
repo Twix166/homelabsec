@@ -35,23 +35,39 @@
             <button id="refresh-button" class="refresh-button" type="button">Refresh</button>
           </div>
           <div class="summary-grid">
-            <article class="stat-card">
+            <button id="summary-assets" class="stat-card stat-button" type="button">
               <span>Total assets</span>
               <strong id="stat-assets">-</strong>
-            </article>
-            <article class="stat-card">
+            </button>
+            <button id="summary-observations" class="stat-card stat-button" type="button">
               <span>Observations</span>
               <strong id="stat-observations">-</strong>
-            </article>
-            <article class="stat-card">
+            </button>
+            <button id="summary-fingerprints" class="stat-card stat-button" type="button">
               <span>Fingerprints</span>
               <strong id="stat-fingerprints">-</strong>
-            </article>
-            <article class="stat-card accent">
+            </button>
+            <button id="summary-changes" class="stat-card stat-button accent" type="button">
               <span>24h changes</span>
               <strong id="stat-changes">-</strong>
-            </article>
+            </button>
           </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="section-heading">
+            <h2 id="detail-title">Detail view</h2>
+            <p id="detail-description">Click a summary card to list the underlying items.</p>
+          </div>
+          <div id="detail-list" class="stack-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <h2>Admin status</h2>
+            <p>API health, scheduler freshness, and quick access links.</p>
+          </div>
+          <div id="admin-status" class="stack-list"></div>
         </section>
 
         <section class="panel">

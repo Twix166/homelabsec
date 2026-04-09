@@ -1,0 +1,6 @@
+<nmaprun>
+  <host>
+    <status state="up">
+    <address addr="10.0.0.10" addrtype="ipv4" />
+  </host>
+</nmaprun>

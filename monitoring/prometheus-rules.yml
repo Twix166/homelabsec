@@ -1,0 +1,73 @@
+groups:
+  - name: homelabsec-watchdog
+    rules:
+      - alert: HomelabSecWatchdog
+        expr: vector(1)
+        labels:
+          severity: info
+        annotations:
+          summary: HomelabSec alert routing watchdog
+          description: This always-firing alert exists so Alertmanager routing can be validated safely.
+
+  - name: homelabsec-brain
+    rules:
+      - alert: HomelabSecBrainTargetDown
+        expr: up{job="homelabsec-brain"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: HomelabSec brain metrics target is down
+          description: Prometheus has not been able to scrape the brain metrics endpoint for 2 minutes.
+
+      - alert: HomelabSecBrainHigh5xxRate
+        expr: sum(rate(homelabsec_http_requests_total{status=~"5.."}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: HomelabSec brain is returning 5xx responses
+          description: The brain API is returning more than a minimal sustained rate of 5xx responses over 10 minutes.
+
+      - alert: HomelabSecBrainP95LatencyHigh
+        expr: |
+          (
+            sum(rate(homelabsec_http_request_duration_seconds_sum[5m]))
+            /
+            clamp_min(sum(rate(homelabsec_http_request_duration_seconds_count[5m])), 1)
+          ) > 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: HomelabSec brain average request latency is high
+          description: Average request latency across the brain API has stayed above 2 seconds for 15 minutes.
+
+  - name: homelabsec-scheduler
+    rules:
+      - alert: HomelabSecSchedulerMetricsDown
+        expr: up{job="homelabsec-scheduler"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: HomelabSec scheduler metrics target is down
+          description: Prometheus has not been able to scrape the scheduler metrics endpoint for 2 minutes.
+
+      - alert: HomelabSecSchedulerDiscoveryStale
+        expr: time() - homelabsec_scheduler_job_last_success_timestamp_seconds{job="discovery"} > 7200
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: HomelabSec discovery job looks stale
+          description: The discovery job has not completed successfully for more than 2 hours.
+
+      - alert: HomelabSecSchedulerJobFailures
+        expr: increase(homelabsec_scheduler_job_failed_total[30m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: HomelabSec scheduler jobs are failing
+          description: One or more scheduler jobs have failed within the last 30 minutes.

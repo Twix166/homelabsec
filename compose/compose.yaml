@@ -1,12 +1,14 @@
+name: homelabsec
+
 services:
   postgres:
     image: postgres:17
     container_name: homelabsec-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: homelabsec
-      POSTGRES_USER: homelabsec
-      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: ${POSTGRES_DB:-homelabsec}
+      POSTGRES_USER: ${POSTGRES_USER:-homelabsec}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ../brain/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
@@ -20,17 +22,15 @@ services:
       - "5432:5432"
 
   brain:
-    image: python:3.12-slim
+    build: ../brain
+    image: homelabsec-brain:latest
     container_name: homelabsec-brain
     restart: unless-stopped
     working_dir: /app
-    command: >
-      sh -c "pip install --no-cache-dir fastapi uvicorn psycopg[binary] pydantic requests lxml &&
-             uvicorn app:app --host 0.0.0.0 --port 8088"
     environment:
-      DATABASE_URL: postgresql://homelabsec:change-me@postgres:5432/homelabsec
-      OLLAMA_URL: http://host.containers.internal:11434
-      OLLAMA_MODEL: homelabsec-classifier
+      DATABASE_URL: postgresql://${POSTGRES_USER:-homelabsec}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-homelabsec}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.containers.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-homelabsec-classifier}
     extra_hosts:
       - "host.containers.internal:host-gateway"
     volumes:
@@ -39,6 +39,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -51,18 +53,38 @@ services:
       start_period: 30s
     ports:
       - "8088:8088"
+
+  migrate:
+    image: homelabsec-brain:latest
+    container_name: homelabsec-migrate
+    restart: "no"
+    working_dir: /app
+    command: ["python", "migrate.py"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-homelabsec}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-homelabsec}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.containers.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-homelabsec-classifier}
+    volumes:
+      - ../brain:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
   
   scheduler:
     build: ../scheduler
     container_name: homelabsec-scheduler
     restart: unless-stopped
     environment:
-      API_BASE: http://127.0.0.1:8088
+      API_BASE: ${SCHEDULER_API_BASE:-http://127.0.0.1:8088}
       TARGET_SUBNET: ${TARGET_SUBNET:-10.0.0.0/24}
       DISCOVERY_INTERVAL_MINUTES: ${DISCOVERY_INTERVAL_MINUTES:-30}
       REPORT_HOUR_UTC: ${REPORT_HOUR_UTC:-8}
       DISCOVERY_DIR: /data/discovery/raw
       TOP_PORTS: ${TOP_PORTS:-100}
+      API_RETRY_ATTEMPTS: ${API_RETRY_ATTEMPTS:-5}
+      API_RETRY_DELAY_SECONDS: ${API_RETRY_DELAY_SECONDS:-5}
+      STARTUP_API_TIMEOUT_SECONDS: ${STARTUP_API_TIMEOUT_SECONDS:-120}
+      STARTUP_DISCOVERY: ${STARTUP_DISCOVERY:-false}
     depends_on:
       brain:
         condition: service_healthy
@@ -98,3 +120,4 @@ services:
 
 volumes:
   pgdata:
+    name: homelabsec_pgdata

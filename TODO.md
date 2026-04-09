@@ -10,49 +10,73 @@ This file tracks the highest-value follow-up work for making HomelabSec more rel
 
 ## Priority 1: Deployment and Bootstrap Gaps
 
-- Wire Postgres schema initialization into Docker Compose.
-- Add a safe database bootstrap path for `brain/init.sql`.
-- Decide on a migration strategy for future schema changes.
-- Replace the runtime `pip install` in the `brain` service with a proper Docker image build.
-- Pin backend dependencies instead of installing floating latest versions at container start.
-- Add service healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`.
-- Improve startup ordering so the scheduler does not run before the API is reachable.
+Status:
+- Postgres init is now wired into compose for fresh volumes.
+- Service healthchecks are in place.
+- `brain` now builds from a Dockerfile with pinned dependencies.
+- Versioned SQL migrations now run through the `migrate` service and `schema_migrations` table.
+
+- Use the migration framework for future schema changes instead of editing only `init.sql`.
 
 ## Priority 2: Installer Reliability
 
-- Fix the repository URL mismatch between `README.md` and `install.sh`.
-- Make install validation fail clearly when the stack is unhealthy.
-- Verify schema readiness as part of install.
-- Verify Ollama connectivity and model availability during install or first-run checks.
-- Make `.env` and `compose/.env` handling less error-prone.
-- Document what the installer guarantees and what still requires manual setup.
+Status:
+- Installer repo URL mismatch is fixed.
+- Installer now validates API health and schema readiness.
+- Installer now validates Ollama connectivity and configured model availability.
+- Installer now treats repo-root `.env` as the source of truth and explicitly runs compose with that env file.
+- Installer guarantees and remaining manual setup are now documented.
+
+- Add deeper validation only if the installer later takes on more host-level responsibilities than compose startup and API readiness.
 
 ## Priority 3: Scheduler Hardening
 
-- Add readiness checks and retries around API calls in the scheduler.
-- Decide whether startup should trigger an immediate discovery run.
-- Handle `nmap` failures without silently stalling the schedule loop.
-- Revisit `network_mode: "host"` and confirm it is required.
-- Document scan privilege and host-network assumptions for `nmap -sS`.
-- Add clearer scheduler logs for discovery, ingest, classification, and report outcomes.
+Status:
+- Scheduler now waits for API readiness, retries API calls, and logs job failures without crashing the loop.
+- `network_mode: "host"` has been reviewed and is intentionally retained for LAN `nmap -sS` semantics and host-loopback API access.
+- Scan privilege and host-network assumptions are now documented.
+- Startup discovery is now an explicit documented opt-in; default startup remains non-scanning unless `STARTUP_DISCOVERY=true`.
+- Scheduler logging is now structured for easier compose-log consumption.
+- Scheduler now exposes Prometheus-style metrics on a dedicated metrics port.
 
 ## Priority 4: Backend Maintainability
 
+Status:
+- `app.py` remains the stable FastAPI entrypoint, and core helper logic has been extracted into internal modules under `brain/brainlib`.
+- Database lookup and common API error paths are now more centralized.
+- Ingest input validation and external dependency failures now return explicit API errors instead of generic server failures.
+- Change persistence now dedupes per fingerprint transition, so repeated detection runs stay idempotent while recurring changes can still be recorded after a later state change.
+- Runtime tuning and fallback values are now routed through `brain/brainlib/config.py`.
+- Reporting queries and serializers are now extracted from `app.py` into a dedicated internal module.
+- Classification route logic is now extracted from `app.py` into a dedicated internal module.
+- Ingest parsing and persistence logic is now extracted from `app.py` into a dedicated internal module.
+- Change-detection route orchestration is now extracted from `app.py` into a dedicated internal module.
+
 - Split the monolithic FastAPI app into smaller modules without changing endpoint behavior.
-- Centralize database connection handling and error paths.
-- Add validation around ingest inputs and external dependency failures.
-- Review classification and change-detection code for idempotency and duplicate persistence edge cases.
-- Add a consistent configuration layer for environment variables.
+- Continue splitting the monolithic FastAPI app into smaller modules without changing endpoint behavior.
 
 ## Priority 5: Security and Operations
 
-- Remove hardcoded secrets from compose defaults.
-- Define the supported trust model for LAN-only versus exposed deployments.
-- Add guidance for TLS and authentication if the product is accessed beyond a trusted local network.
-- Add Postgres backup and restore instructions.
-- Add log collection and basic observability guidance.
+Status:
+- Postgres secrets are now env-driven instead of being embedded directly in compose service definitions.
+- The supported trust model is now documented as trusted-LAN/local-admin use by default.
+- TLS/auth guidance for exposed deployments is now documented.
+- Postgres backup and restore guidance is now documented.
+- Basic log and observability guidance is now documented.
+- `brain`, `scheduler`, and `migrate` now emit structured JSON logs to stdout.
+- An optional auth/TLS edge overlay now exists for broader deployment scenarios.
+- An optional monitoring overlay now exists for Prometheus and Grafana.
+- `brain` now exposes Prometheus-style API metrics.
+- The monitoring overlay now includes a provisioned Grafana dashboard and Prometheus alert rules for core API and scheduler health.
+
+- An optional OIDC-based stronger-auth overlay now exists for exposed deployments.
+- Add notification routing, such as Alertmanager, if alerts need to reach operators automatically.
 
 ## Priority 6: Testing and Verification
+
+Status:
+- Unit, integration, regression, and compose smoke coverage are now in place.
+- CI now runs the test suite on push and pull request.
 
 - Add API smoke tests for health, ingest, classification, change detection, and daily report flows.
 - Add compose-level verification steps that confirm the stack boots cleanly.
