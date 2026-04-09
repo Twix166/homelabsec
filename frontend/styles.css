@@ -1,18 +1,18 @@
 :root {
-  --bg: #09111a;
-  --panel: rgba(13, 25, 38, 0.82);
-  --panel-border: rgba(154, 179, 197, 0.14);
-  --panel-strong: rgba(18, 36, 55, 0.96);
-  --text: #edf3f8;
-  --muted: #95a8b8;
-  --line: rgba(173, 195, 211, 0.16);
-  --accent: #7ce0c3;
-  --accent-strong: #2fa4db;
+  --bg: #081018;
+  --panel: rgba(15, 27, 40, 0.9);
+  --panel-border: rgba(173, 195, 211, 0.16);
+  --panel-strong: rgba(20, 36, 52, 0.98);
+  --text: #f4f8fb;
+  --muted: #a9bac8;
+  --line: rgba(184, 204, 219, 0.18);
+  --accent: #8de2c6;
+  --accent-strong: #49b4d9;
   --critical: #ff7a7a;
-  --high: #ffb36b;
+  --high: #ffc078;
   --medium: #f0d879;
-  --low: #83c6ff;
-  --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+  --low: #8ed1ff;
+  --shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
 }
 
 * {
@@ -25,9 +25,9 @@ body {
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(47, 164, 219, 0.24), transparent 28%),
-    radial-gradient(circle at top right, rgba(124, 224, 195, 0.18), transparent 22%),
-    linear-gradient(180deg, #0c1621 0%, var(--bg) 100%);
+    radial-gradient(circle at top left, rgba(73, 180, 217, 0.28), transparent 30%),
+    radial-gradient(circle at top right, rgba(141, 226, 198, 0.18), transparent 24%),
+    linear-gradient(180deg, #0e1823 0%, var(--bg) 100%);
 }
 
 body::before {
@@ -134,6 +134,9 @@ th {
   grid-column: span 6;
   border-radius: 28px;
   padding: 22px;
+  background:
+    linear-gradient(180deg, rgba(18, 32, 47, 0.98), rgba(11, 22, 33, 0.96)),
+    var(--panel);
 }
 
 .panel-wide,
@@ -168,7 +171,7 @@ th {
   border-radius: 22px;
   padding: 18px;
   min-height: 120px;
-  background: linear-gradient(180deg, rgba(18, 36, 55, 0.95), rgba(12, 21, 33, 0.95));
+  background: linear-gradient(180deg, rgba(25, 44, 64, 0.98), rgba(12, 22, 34, 0.98));
 }
 
 .stat-button {
@@ -260,7 +263,95 @@ th {
 .list-card {
   border-radius: 18px;
   padding: 16px;
-  background: linear-gradient(180deg, rgba(16, 31, 46, 0.96), rgba(10, 20, 31, 0.96));
+  background: linear-gradient(180deg, rgba(18, 33, 49, 0.98), rgba(10, 20, 31, 0.98));
+}
+
+.admin-panel {
+  background:
+    radial-gradient(circle at top right, rgba(73, 180, 217, 0.14), transparent 42%),
+    linear-gradient(180deg, rgba(19, 34, 49, 0.98), rgba(10, 20, 31, 0.98));
+}
+
+.admin-card {
+  background:
+    radial-gradient(circle at top left, rgba(141, 226, 198, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(21, 38, 55, 0.99), rgba(11, 22, 33, 0.99));
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.admin-eyebrow {
+  margin-bottom: 6px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+}
+
+.status-pill {
+  padding: 6px 12px;
+  font-weight: 700;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-grid-compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-metric {
+  border: 1px solid rgba(184, 204, 219, 0.12);
+  border-radius: 16px;
+  padding: 13px 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.admin-metric.compact {
+  text-align: center;
+}
+
+.admin-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.77rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.admin-value {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.admin-scan {
+  margin-bottom: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.admin-scan-title {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.admin-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .list-topline {
@@ -282,7 +373,8 @@ th {
   font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
 }
 
 .pill.critical {
@@ -320,6 +412,7 @@ th {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
+  color: var(--muted);
 }
 
 .table-wrap {
@@ -383,6 +476,11 @@ tbody tr:hover {
   .summary-grid,
   .hero-meta {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-grid,
+  .admin-grid-compact {
+    grid-template-columns: 1fr;
   }
 }
 

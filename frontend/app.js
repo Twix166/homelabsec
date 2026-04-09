@@ -201,37 +201,66 @@ function renderAdminStatus(status) {
     .join("");
 
   elements.adminStatus.innerHTML = `
-    <article class="list-card">
-      <div class="list-topline">
-        <div class="list-title">API status</div>
-        <span class="pill ${freshness.status === "stale" ? "high" : "low"}">${escapeHtml(status.api_status || "unknown")}</span>
+    <article class="list-card admin-card">
+      <div class="admin-header">
+        <div>
+          <div class="admin-eyebrow">Control plane</div>
+          <div class="list-title">API status</div>
+        </div>
+        <span class="pill status-pill ${freshness.status === "stale" ? "high" : "low"}">${escapeHtml(status.api_status || "unknown")}</span>
       </div>
-      <div class="list-meta">
-        <span>Generated ${escapeHtml(formatDate(status.generated_at))}</span>
-        <span>Scheduler ${escapeHtml(freshness.status || "unknown")}</span>
-        <span>Stale after ${escapeHtml(freshness.stale_after_minutes ?? "-")} min</span>
-        <span>Latest scan age ${escapeHtml(freshness.age_minutes ?? "-")} min</span>
+      <div class="admin-grid">
+        <div class="admin-metric">
+          <span class="admin-label">Generated</span>
+          <strong class="admin-value">${escapeHtml(formatDate(status.generated_at))}</strong>
+        </div>
+        <div class="admin-metric">
+          <span class="admin-label">Scheduler</span>
+          <strong class="admin-value">${escapeHtml(freshness.status || "unknown")}</strong>
+        </div>
+        <div class="admin-metric">
+          <span class="admin-label">Stale after</span>
+          <strong class="admin-value">${escapeHtml(freshness.stale_after_minutes ?? "-")} min</strong>
+        </div>
+        <div class="admin-metric">
+          <span class="admin-label">Scan age</span>
+          <strong class="admin-value">${escapeHtml(freshness.age_minutes ?? "-")} min</strong>
+        </div>
       </div>
-      <div class="list-meta">
-        <span>${escapeHtml(summary.assets ?? 0)} assets</span>
-        <span>${escapeHtml(summary.network_observations ?? 0)} observations</span>
-        <span>${escapeHtml(summary.fingerprints ?? 0)} fingerprints</span>
+      <div class="admin-grid admin-grid-compact">
+        <div class="admin-metric compact">
+          <span class="admin-label">Assets</span>
+          <strong class="admin-value">${escapeHtml(summary.assets ?? 0)}</strong>
+        </div>
+        <div class="admin-metric compact">
+          <span class="admin-label">Observations</span>
+          <strong class="admin-value">${escapeHtml(summary.network_observations ?? 0)}</strong>
+        </div>
+        <div class="admin-metric compact">
+          <span class="admin-label">Fingerprints</span>
+          <strong class="admin-value">${escapeHtml(summary.fingerprints ?? 0)}</strong>
+        </div>
       </div>
       ${
         latestScan
           ? `
-            <div class="list-meta mono">
-              <span>${escapeHtml(latestScan.scan_type || "scan")}</span>
-              <span>${escapeHtml(latestScan.status || "unknown")}</span>
-              <span>${escapeHtml(formatDate(latestScan.completed_at || latestScan.started_at))}</span>
-              <span>${escapeHtml(latestScan.scan_run_id)}</span>
+            <div class="admin-scan">
+              <div class="admin-scan-title">Latest scan</div>
+              <div class="list-meta">
+                <span>${escapeHtml(latestScan.scan_type || "scan")}</span>
+                <span>${escapeHtml(latestScan.status || "unknown")}</span>
+                <span>${escapeHtml(formatDate(latestScan.completed_at || latestScan.started_at))}</span>
+              </div>
+              <div class="list-meta mono">
+                <span>${escapeHtml(latestScan.scan_run_id)}</span>
+              </div>
             </div>
           `
           : `
             <div class="empty-state">No scan runs recorded yet.</div>
           `
       }
-      <div class="list-meta">
+      <div class="admin-links">
         ${quickLinks}
       </div>
     </article>
