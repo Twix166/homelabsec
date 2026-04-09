@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "nmap_single_host.xml"
 FRONTEND_INDEX_PATH = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
 FRONTEND_APP_PATH = Path(__file__).resolve().parents[2] / "frontend" / "app.js"
+FRONTEND_ASSET_PATH = Path(__file__).resolve().parents[2] / "frontend" / "asset.html"
+FRONTEND_ASSET_SCRIPT_PATH = Path(__file__).resolve().parents[2] / "frontend" / "asset.js"
 
 
 @pytest.fixture
@@ -170,7 +172,7 @@ def test_admin_status_contract_shape(populated_dashboard_data):
         "scheduler_freshness",
     } == set(payload.keys())
     assert payload["api_status"] == "ok"
-    assert payload["version"] == "0.1.0"
+    assert payload["version"] == "0.2.0"
     assert set(payload["summary"].keys()) == {"assets", "network_observations", "fingerprints"}
     assert {
         "status",
@@ -188,10 +190,17 @@ def test_dashboard_markup_exposes_clickable_summary_cards():
     assert '<button id="summary-changes"' in html
     assert 'id="filter-assets-all"' in html
     assert 'id="filter-assets-notable"' in html
+    assert 'id="filter-confidence-red"' in html
+    assert 'id="filter-confidence-green"' in html
+    assert 'id="filter-confidence-blue"' in html
     assert 'id="asset-count"' in html
     assert 'id="detail-list"' in html
     assert 'id="admin-status"' in html
     assert "Most notable" in html
+    assert 'data-sort-key="last_seen"' in html
+    assert "Red" in html
+    assert "Green" in html
+    assert "Blue" in html
 
 
 def test_dashboard_script_wires_frontend_contracts():
@@ -206,9 +215,27 @@ def test_dashboard_script_wires_frontend_contracts():
     assert 'renderSummaryDetail("changes")' in script
     assert "function confidenceBand(value)" in script
     assert "function confidenceTooltip(value)" in script
+    assert "function sortedAssets(assets)" in script
+    assert 'dashboardState.assetSortKey = "last_seen"' in script or 'assetSortKey: "last_seen"' in script
+    assert 'dashboardState.assetFilter = "red"' in script
+    assert 'dashboardState.assetFilter = "green"' in script
+    assert 'dashboardState.assetFilter = "blue"' in script
+    assert 'href="/asset.html?id=${encodeURIComponent(asset.asset_id)}"' in script
     assert 'class="pill confidence-pill ${escapeHtml(confidence.className)}"' in script
     assert 'elements.assetCount.textContent = `${shownCount}/${totalCount}`' in script
     assert "renderAdminStatus(dashboardState.adminStatus)" in script
     assert 'dashboardState.notableAssetIds = new Set' in script
     assert 'dashboardState.assetFilter = "notable"' in script
     assert "Most notable" in script
+
+
+def test_asset_detail_markup_and_script_exist():
+    html = FRONTEND_ASSET_PATH.read_text(encoding="utf-8")
+    script = FRONTEND_ASSET_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert 'id="rescan-button"' in html
+    assert 'id="asset-overview"' in html
+    assert 'id="asset-services"' in html
+    assert 'id="asset-lookup"' in html
+    assert 'fetchJson(`/api/assets/${assetId}`)' in script
+    assert 'fetchJson(`/api/rescan/${assetId}`' in script

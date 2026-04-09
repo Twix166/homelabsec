@@ -46,6 +46,12 @@ def latest_scan_path() -> Path:
     return DISCOVERY_DIR / f"scan_{ts}.xml"
 
 
+def targeted_scan_path(asset_id: str) -> Path:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    DISCOVERY_DIR.mkdir(parents=True, exist_ok=True)
+    return DISCOVERY_DIR / f"rescan_{asset_id}_{ts}.xml"
+
+
 def wait_for_api_ready(timeout_seconds: int) -> None:
     deadline = time.time() + timeout_seconds
     last_error = "API did not become ready"
@@ -136,6 +142,13 @@ def ingest_latest(xml_path: str) -> None:
         timeout=300,
     )
     log("Ingest response received", event="ingest_complete", response=r.json())
+    return r.json()
+
+
+def classify_asset(asset_id: str) -> None:
+    log("Running classify_asset", event="classify_asset_start", asset_id=asset_id)
+    request_with_retries("POST", f"/classify/{asset_id}", timeout=600)
+    log("classify_asset complete", event="classify_asset_complete", asset_id=asset_id)
 
 
 def classify_all() -> None:
@@ -152,6 +165,85 @@ def detect_changes() -> None:
         event="detect_changes_complete",
         assets_with_changes=r.json().get("assets_with_changes"),
     )
+
+
+def detect_changes_for_asset(asset_id: str) -> None:
+    log("Running detect_changes_for_asset", event="detect_changes_asset_start", asset_id=asset_id)
+    request_with_retries("GET", f"/detect_changes/{asset_id}", timeout=600)
+    log("detect_changes_for_asset complete", event="detect_changes_asset_complete", asset_id=asset_id)
+
+
+def claim_rescan_request() -> dict | None:
+    response = requests.post(f"{API_BASE}/rescan_requests/claim", timeout=30)
+    response.raise_for_status()
+    payload = response.json()
+    if not payload.get("claimed"):
+        return None
+    return payload["request"]
+
+
+def complete_rescan_request(request_id: str, status: str, result: dict) -> None:
+    request_with_retries(
+        "POST",
+        f"/rescan_requests/{request_id}/complete",
+        json={"status": status, "result": result},
+        timeout=60,
+    )
+
+
+def process_rescan_queue() -> None:
+    request = claim_rescan_request()
+    if request is None:
+        return
+
+    asset_id = request["asset_id"]
+    target_ip = request.get("target_ip")
+    if not target_ip:
+        complete_rescan_request(
+            request["request_id"],
+            "failed",
+            {"error": "No known IP address available for asset"},
+        )
+        return
+
+    out = targeted_scan_path(asset_id)
+    try:
+        run_cmd(
+            [
+                "nmap",
+                "-sS",
+                "-sV",
+                "--top-ports",
+                TOP_PORTS,
+                "-T4",
+                "-oX",
+                str(out),
+                target_ip,
+            ]
+        )
+        ingest_result = ingest_latest(str(out))
+        classify_asset(asset_id)
+        detect_changes_for_asset(asset_id)
+        complete_rescan_request(
+            request["request_id"],
+            "completed",
+            {
+                "scan_path": str(out),
+                "target_ip": target_ip,
+                "ingest_result": ingest_result,
+            },
+        )
+    except Exception as exc:
+        complete_rescan_request(
+            request["request_id"],
+            "failed",
+            {
+                "scan_path": str(out),
+                "target_ip": target_ip,
+                "error": str(exc),
+            },
+        )
+        raise
 
 
 def daily_report() -> None:
@@ -194,6 +286,7 @@ def main() -> None:
 
     while True:
         schedule.run_pending()
+        safe_job("process_rescan_queue", process_rescan_queue)
         time.sleep(5)
 
 

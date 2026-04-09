@@ -61,7 +61,7 @@ def test_version_endpoint(client):
     response = client.get("/version")
 
     assert response.status_code == 200
-    assert response.json() == {"version": "0.1.0"}
+    assert response.json() == {"version": "0.2.0"}
 
 
 def test_schema_migrations_table_is_initialized(integration_brain_module, integration_db_url):
@@ -286,6 +286,60 @@ def test_classification_lookup_endpoint_lists_learned_entries(client, mock_ollam
     assert "network" in entry["signature"]
 
 
+def test_asset_detail_includes_services_and_lookup(client, mock_ollama):
+    ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
+    assert ingest_response.status_code == 200
+    asset_id = client.get("/assets").json()["assets"][0]["asset_id"]
+
+    classify_response = client.post(f"/classify/{asset_id}")
+    assert classify_response.status_code == 200
+
+    response = client.get(f"/assets/{asset_id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["asset"]["asset_id"] == asset_id
+    assert payload["exposed_services"]
+    assert payload["exposed_services"][0]["port"] == 22
+    assert payload["learned_lookup"]["role"] == "web_server"
+    assert payload["latest_rescan_request"] is None
+
+
+def test_rescan_queue_endpoints_round_trip(client):
+    ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
+    assert ingest_response.status_code == 200
+    asset_id = client.get("/assets").json()["assets"][0]["asset_id"]
+
+    queue_response = client.post(f"/rescan/{asset_id}")
+    assert queue_response.status_code == 200
+    queue_payload = queue_response.json()
+    assert queue_payload["queued"] is True
+    request_id = queue_payload["request"]["request_id"]
+    assert queue_payload["request"]["status"] == "pending"
+
+    duplicate_response = client.post(f"/rescan/{asset_id}")
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.json()["queued"] is False
+
+    claim_response = client.post("/rescan_requests/claim")
+    assert claim_response.status_code == 200
+    claim_payload = claim_response.json()
+    assert claim_payload["claimed"] is True
+    assert claim_payload["request"]["request_id"] == request_id
+    assert claim_payload["request"]["asset_id"] == asset_id
+
+    complete_response = client.post(
+        f"/rescan_requests/{request_id}/complete",
+        json={"status": "completed", "result": {"target_ip": "10.0.0.10"}},
+    )
+    assert complete_response.status_code == 200
+    assert complete_response.json()["status"] == "completed"
+
+    detail_response = client.get(f"/assets/{asset_id}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["latest_rescan_request"]["status"] == "completed"
+
+
 def test_detect_changes_is_idempotent_for_same_fingerprint_pair(client, integration_db_url):
     import psycopg
 
@@ -322,7 +376,7 @@ def test_admin_status_endpoint_reports_scheduler_freshness(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["api_status"] == "ok"
-    assert payload["version"] == "0.1.0"
+    assert payload["version"] == "0.2.0"
     assert set(payload["summary"].keys()) == {"assets", "network_observations", "fingerprints"}
     assert payload["scheduler_freshness"]["status"] in {"fresh", "stale", "unknown"}
     assert payload["latest_scan_run"]["scan_type"] == "nmap_xml_ingest"

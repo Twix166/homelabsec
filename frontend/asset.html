@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HomelabSec Asset Detail</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">HomelabSec</p>
+          <h1 id="asset-title">Asset detail</h1>
+          <p class="lede" id="asset-subtitle">Inspect one asset in depth.</p>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-card">
+            <span>Role</span>
+            <strong id="detail-role">Loading</strong>
+          </div>
+          <div class="meta-card">
+            <span>Confidence</span>
+            <strong id="detail-confidence">-</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel panel-wide">
+          <div class="section-heading">
+            <h2>Overview</h2>
+            <div class="inventory-controls">
+              <a class="filter-button is-active" href="/">Back to dashboard</a>
+              <button id="rescan-button" class="refresh-button" type="button">Rescan host</button>
+            </div>
+          </div>
+          <div id="asset-overview" class="stack-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <h2>Exposed services</h2>
+          </div>
+          <div id="asset-services" class="stack-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <h2>Learned lookup</h2>
+          </div>
+          <div id="asset-lookup" class="stack-list"></div>
+        </section>
+      </main>
+    </div>
+    <template id="empty-state-template">
+      <div class="empty-state">No data available.</div>
+    </template>
+    <script src="/asset.js"></script>
+  </body>
+</html>

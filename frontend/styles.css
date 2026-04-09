@@ -255,6 +255,31 @@ th {
   color: var(--text);
 }
 
+.sort-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.sort-button::after {
+  content: " ↕";
+  color: rgba(169, 186, 200, 0.72);
+}
+
+.sort-button.is-active[data-sort-direction="asc"]::after {
+  content: " ↑";
+}
+
+.sort-button.is-active[data-sort-direction="desc"]::after {
+  content: " ↓";
+}
+
 .stack-list {
   display: grid;
   gap: 12px;
@@ -485,6 +510,18 @@ tbody tr:hover {
 
 .muted-cell {
   color: var(--muted);
+}
+
+.detail-link {
+  margin-right: 8px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.detail-link:hover,
+.detail-link:focus-visible {
+  text-decoration: underline;
 }
 
 .empty-state {

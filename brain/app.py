@@ -26,13 +26,14 @@ from brainlib.fingerprints import (
     fingerprint_hash,
 )
 from brainlib.ingest import ingest_nmap_xml as ingest_nmap_xml_record
-from brainlib.inventory import fingerprint_detail, list_assets as list_assets_records
+from brainlib.inventory import asset_detail, fingerprint_detail, list_assets as list_assets_records
 from brainlib.inventory import list_fingerprints as list_fingerprints_records
 from brainlib.inventory import list_observations as list_observations_records
 from brainlib.logging_utils import configure_logging, log_event
 from brainlib.metrics import record_http_request
 from brainlib.ollama import OllamaError
 from brainlib.reports import daily_report, summary_report
+from brainlib.rescan import claim_rescan_request, complete_rescan_request, enqueue_rescan_request
 from brainlib.system import health_status, metrics_payload, ollama_test_payload, version_status
 
 app = FastAPI(title="HomelabSec Brain")
@@ -41,6 +42,11 @@ logger = configure_logging("homelabsec.brain")
 
 class NmapXmlIngestRequest(BaseModel):
     xml_path: str
+
+
+class RescanCompleteRequest(BaseModel):
+    status: str
+    result: dict[str, Any] | None = None
 
 
 @app.middleware("http")
@@ -119,6 +125,12 @@ def list_assets():
         return list_assets_records(conn)
 
 
+@app.get("/assets/{asset_id}")
+def get_asset_detail(asset_id: str):
+    with db() as conn:
+        return asset_detail(conn, asset_id)
+
+
 @app.get("/observations")
 def list_observations():
     with db() as conn:
@@ -135,6 +147,24 @@ def list_fingerprints():
 def list_classification_lookup():
     with db() as conn:
         return list_classification_lookup_entries(conn)
+
+
+@app.post("/rescan/{asset_id}")
+def request_asset_rescan(asset_id: str):
+    with db() as conn:
+        return enqueue_rescan_request(conn, asset_id)
+
+
+@app.post("/rescan_requests/claim")
+def claim_next_rescan_request():
+    with db() as conn:
+        return claim_rescan_request(conn)
+
+
+@app.post("/rescan_requests/{request_id}/complete")
+def complete_asset_rescan(request_id: str, payload: RescanCompleteRequest):
+    with db() as conn:
+        return complete_rescan_request(conn, request_id, status=payload.status, result=payload.result)
 
 
 @app.post("/classify/{asset_id}")

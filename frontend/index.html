@@ -87,8 +87,11 @@
             <div class="inventory-controls">
               <div id="asset-count" class="asset-count">0/0 shown</div>
               <div class="filter-group" role="group" aria-label="Asset inventory filter">
-              <button id="filter-assets-all" class="filter-button is-active" type="button">All</button>
-              <button id="filter-assets-notable" class="filter-button" type="button">Most notable</button>
+                <button id="filter-assets-all" class="filter-button is-active" type="button">All</button>
+                <button id="filter-assets-notable" class="filter-button" type="button">Most notable</button>
+                <button id="filter-confidence-red" class="filter-button" type="button">Red</button>
+                <button id="filter-confidence-green" class="filter-button" type="button">Green</button>
+                <button id="filter-confidence-blue" class="filter-button" type="button">Blue</button>
               </div>
             </div>
           </div>
@@ -96,13 +99,13 @@
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Flags</th>
-                  <th>Role</th>
-                  <th>Confidence</th>
-                  <th>First seen</th>
-                  <th>Last seen</th>
-                  <th>Asset ID</th>
+                  <th><button class="sort-button" type="button" data-sort-key="preferred_name">Name</button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="flags">Flags</button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="role">Role</button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="role_confidence">Confidence</button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="first_seen">First seen</button></th>
+                  <th><button class="sort-button is-active" type="button" data-sort-key="last_seen">Last seen</button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="asset_id">Asset ID</button></th>
                 </tr>
               </thead>
               <tbody id="assets-table"></tbody>

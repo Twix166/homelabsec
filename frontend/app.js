@@ -28,6 +28,10 @@ const elements = {
   assetsTable: document.getElementById("assets-table"),
   filterAssetsAll: document.getElementById("filter-assets-all"),
   filterAssetsNotable: document.getElementById("filter-assets-notable"),
+  filterConfidenceRed: document.getElementById("filter-confidence-red"),
+  filterConfidenceGreen: document.getElementById("filter-confidence-green"),
+  filterConfidenceBlue: document.getElementById("filter-confidence-blue"),
+  sortButtons: Array.from(document.querySelectorAll(".sort-button")),
   refreshButton: document.getElementById("refresh-button"),
   emptyTemplate: document.getElementById("empty-state-template"),
 };
@@ -41,6 +45,8 @@ const dashboardState = {
   adminStatus: null,
   activeSummary: "changes",
   assetFilter: "all",
+  assetSortKey: "last_seen",
+  assetSortDirection: "desc",
 };
 
 function escapeHtml(value) {
@@ -86,9 +92,10 @@ function confidenceBand(value) {
   }
 
   if (value >= 0.85) {
-    return {
-      label: "High",
+  return {
+    label: "High",
       className: "confidence-high",
+      filterKey: "green",
       summary: "The score is high because the fingerprint has strong service and platform signals that match a known role.",
       nextStep: "Keep discovery current. If you want to validate it further, confirm the exposed services or compare against the learned lookup entry.",
     };
@@ -98,6 +105,7 @@ function confidenceBand(value) {
     return {
       label: "Medium",
       className: "confidence-medium",
+      filterKey: "blue",
       summary: "The score is moderate because some signals match, but the fingerprint is still somewhat ambiguous.",
       nextStep: "Improve it by collecting more service details, identifying the host more precisely, or validating it over SSH with a targeted script.",
     };
@@ -106,6 +114,7 @@ function confidenceBand(value) {
   return {
     label: "Low",
     className: "confidence-low",
+    filterKey: "red",
     summary: "The score is low because the current fingerprint is weak, generic, or missing enough detail for a reliable role match.",
     nextStep: "Improve it by rescanning, exposing more service metadata, or using SSH-based inspection to gather stronger host evidence.",
   };
@@ -129,6 +138,53 @@ function severityClass(severity) {
     return "";
   }
   return String(severity).toLowerCase();
+}
+
+function filterAssets(assets) {
+  if (dashboardState.assetFilter === "notable") {
+    return assets.filter((asset) => dashboardState.notableAssetIds.has(asset.asset_id));
+  }
+
+  if (["red", "green", "blue"].includes(dashboardState.assetFilter)) {
+    return assets.filter((asset) => confidenceBand(asset.role_confidence).filterKey === dashboardState.assetFilter);
+  }
+
+  return assets;
+}
+
+function sortValue(asset, sortKey) {
+  if (sortKey === "flags") {
+    return dashboardState.notableAssetIds.has(asset.asset_id) ? 1 : 0;
+  }
+
+  if (sortKey === "role_confidence") {
+    return typeof asset.role_confidence === "number" ? asset.role_confidence : -1;
+  }
+
+  if (sortKey === "first_seen" || sortKey === "last_seen") {
+    return asset[sortKey] ? new Date(asset[sortKey]).getTime() : 0;
+  }
+
+  return String(asset[sortKey] ?? "").toLowerCase();
+}
+
+function sortedAssets(assets) {
+  const direction = dashboardState.assetSortDirection === "asc" ? 1 : -1;
+  const sortKey = dashboardState.assetSortKey;
+
+  return [...assets].sort((left, right) => {
+    const leftValue = sortValue(left, sortKey);
+    const rightValue = sortValue(right, sortKey);
+
+    if (leftValue < rightValue) {
+      return -1 * direction;
+    }
+    if (leftValue > rightValue) {
+      return 1 * direction;
+    }
+
+    return String(left.asset_id).localeCompare(String(right.asset_id)) * direction;
+  });
 }
 
 function renderRecentChanges(changes) {
@@ -158,10 +214,7 @@ function renderRecentChanges(changes) {
 }
 
 function assetInventoryRows() {
-  const assets =
-    dashboardState.assetFilter === "notable"
-      ? dashboardState.assets.filter((asset) => dashboardState.notableAssetIds.has(asset.asset_id))
-      : dashboardState.assets;
+  const assets = sortedAssets(filterAssets(dashboardState.assets));
 
   return assets.map((asset) => {
     const isNotable = dashboardState.notableAssetIds.has(asset.asset_id);
@@ -182,7 +235,7 @@ function assetInventoryRows() {
         </td>
         <td>${escapeHtml(formatDate(asset.first_seen))}</td>
         <td>${escapeHtml(formatDate(asset.last_seen))}</td>
-        <td class="mono">${escapeHtml(asset.asset_id)}</td>
+        <td class="mono"><a class="detail-link" href="/asset.html?id=${encodeURIComponent(asset.asset_id)}">Details</a> ${escapeHtml(asset.asset_id)}</td>
       </tr>
     `;
   });
@@ -215,6 +268,17 @@ function renderAssetsTable() {
 function updateAssetFilterButtons() {
   elements.filterAssetsAll.classList.toggle("is-active", dashboardState.assetFilter === "all");
   elements.filterAssetsNotable.classList.toggle("is-active", dashboardState.assetFilter === "notable");
+  elements.filterConfidenceRed.classList.toggle("is-active", dashboardState.assetFilter === "red");
+  elements.filterConfidenceGreen.classList.toggle("is-active", dashboardState.assetFilter === "green");
+  elements.filterConfidenceBlue.classList.toggle("is-active", dashboardState.assetFilter === "blue");
+}
+
+function updateSortButtons() {
+  for (const button of elements.sortButtons) {
+    const isActive = button.dataset.sortKey === dashboardState.assetSortKey;
+    button.classList.toggle("is-active", isActive);
+    button.dataset.sortDirection = isActive ? dashboardState.assetSortDirection : "";
+  }
 }
 
 function buildQuickLinks() {
@@ -456,6 +520,7 @@ async function loadDashboard() {
 
     renderRecentChanges(dashboardState.changes);
     updateAssetFilterButtons();
+    updateSortButtons();
     renderAssetsTable();
     renderAdminStatus(dashboardState.adminStatus);
     renderSummaryDetail(dashboardState.activeSummary);
@@ -505,5 +570,42 @@ elements.filterAssetsNotable.addEventListener("click", () => {
   updateAssetFilterButtons();
   renderAssetsTable();
 });
+
+elements.filterConfidenceRed.addEventListener("click", () => {
+  dashboardState.assetFilter = "red";
+  updateAssetFilterButtons();
+  renderAssetsTable();
+});
+
+elements.filterConfidenceGreen.addEventListener("click", () => {
+  dashboardState.assetFilter = "green";
+  updateAssetFilterButtons();
+  renderAssetsTable();
+});
+
+elements.filterConfidenceBlue.addEventListener("click", () => {
+  dashboardState.assetFilter = "blue";
+  updateAssetFilterButtons();
+  renderAssetsTable();
+});
+
+for (const button of elements.sortButtons) {
+  button.addEventListener("click", () => {
+    const { sortKey } = button.dataset;
+    if (!sortKey) {
+      return;
+    }
+
+    if (dashboardState.assetSortKey === sortKey) {
+      dashboardState.assetSortDirection = dashboardState.assetSortDirection === "asc" ? "desc" : "asc";
+    } else {
+      dashboardState.assetSortKey = sortKey;
+      dashboardState.assetSortDirection = sortKey === "last_seen" ? "desc" : "asc";
+    }
+
+    updateSortButtons();
+    renderAssetsTable();
+  });
+}
 
 loadDashboard();

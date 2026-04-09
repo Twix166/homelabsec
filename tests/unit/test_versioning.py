@@ -25,4 +25,4 @@ def test_version_file_matches_semver():
 
 def test_current_version_reads_version_file():
     versioning_module = _load_module("homelabsec_versioning", VERSIONING_PATH)
-    assert versioning_module.current_version() == "0.1.0"
+    assert versioning_module.current_version() == "0.2.0"

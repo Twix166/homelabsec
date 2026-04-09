@@ -2,7 +2,7 @@
 
 HomelabSec is a local homelab security inventory and monitoring system.
 
-Current release version: `0.1.0`
+Current release version: `0.2.0`
 
 It currently supports:
 
@@ -216,6 +216,7 @@ The summary cards on the dashboard are clickable. Selecting `Total assets`, `Obs
 The dashboard also includes an `Admin status` panel. It shows API status, scheduler freshness, summary counts, and quick links to the main operator surfaces.
 
 The asset inventory now uses a single unified table. Assets identified as notable by the daily report are tagged inline, and the table includes a client-side filter to switch between `All` assets and `Most notable`.
+The inventory also supports confidence-color filters and sortable columns, and each asset row links to a dedicated detail page with exposed services, learned lookup data, and a host rescan action.
 
 The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`. `brain` waits for Postgres readiness, and the dependent services wait for the API health endpoint before starting.
 
@@ -663,6 +664,18 @@ Inspect learned lookup entries:
 
 ```bash
 curl http://localhost:8088/classification_lookup
+```
+
+View one asset in detail:
+
+```bash
+curl http://localhost:8088/assets/<asset_id>
+```
+
+Queue a focused rescan for one asset:
+
+```bash
+curl -X POST http://localhost:8088/rescan/<asset_id>
 ```
 
 Example response:
