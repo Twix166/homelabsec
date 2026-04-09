@@ -72,6 +72,65 @@ def test_fingerprint_hash_changes_when_stable_fields_change(brain_module):
     assert brain_module.fingerprint_hash(baseline) != brain_module.fingerprint_hash(changed_role)
 
 
+def test_classification_lookup_signature_ignores_host_specific_runtime_fields(brain_module):
+    fingerprint = {
+        "identity": {
+            "preferred_name": "nas-01",
+            "identifiers": [{"type": "mac", "value": "aa:bb:cc:dd:ee:ff"}],
+        },
+        "network": {
+            "ip_addresses": ["10.0.0.10"],
+            "mac_addresses": ["aa:bb:cc:dd:ee:ff"],
+            "open_ports": [{"port": 80, "protocol": "tcp", "service_name": "http"}],
+            "os_guess": "Linux",
+        },
+        "history": {"first_seen": "2026-01-01T00:00:00+00:00", "last_seen": "2026-01-02T00:00:00+00:00"},
+        "role": "web_server",
+        "role_confidence": 0.88,
+    }
+
+    signature = brain_module.classification_lookup_signature(fingerprint)
+
+    assert "history" not in signature
+    assert "role" not in signature
+    assert "role_confidence" not in signature
+    assert "preferred_name" not in signature["identity"]
+    assert "ip_addresses" not in signature["network"]
+    assert "mac_addresses" not in signature["network"]
+
+
+def test_classification_lookup_signature_hash_matches_similar_hosts(brain_module):
+    left = {
+        "identity": {"preferred_name": "host-a", "identifiers": [{"type": "hostname", "value": "host-a"}]},
+        "network": {
+            "ip_addresses": ["10.0.0.10"],
+            "mac_addresses": ["aa:aa:aa:aa:aa:aa"],
+            "open_ports": [{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+            "os_guess": "Linux",
+        },
+        "history": {"first_seen": "2026-01-01T00:00:00+00:00", "last_seen": "2026-01-02T00:00:00+00:00"},
+        "role": "unknown",
+        "role_confidence": 0.1,
+    }
+    right = {
+        "identity": {"preferred_name": "host-b", "identifiers": [{"type": "hostname", "value": "host-b"}]},
+        "network": {
+            "ip_addresses": ["10.0.0.11"],
+            "mac_addresses": ["bb:bb:bb:bb:bb:bb"],
+            "open_ports": [{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+            "os_guess": "Linux",
+        },
+        "history": {"first_seen": "2026-01-05T00:00:00+00:00", "last_seen": "2026-01-06T00:00:00+00:00"},
+        "role": "server",
+        "role_confidence": 0.9,
+    }
+
+    assert (
+        brain_module.classification_lookup_signature_hash(left)
+        == brain_module.classification_lookup_signature_hash(right)
+    )
+
+
 def test_diff_fingerprints_marks_new_asset(brain_module):
     new_fp = {
         "identity": {"preferred_name": "printer-1"},

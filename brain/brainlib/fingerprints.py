@@ -96,6 +96,32 @@ def fingerprint_hash(fingerprint: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def classification_lookup_signature(fingerprint: dict[str, Any]) -> dict[str, Any]:
+    signature = json.loads(json.dumps(fingerprint))
+
+    signature.pop("history", None)
+    signature.pop("role", None)
+    signature.pop("role_confidence", None)
+
+    identity = signature.get("identity")
+    if isinstance(identity, dict):
+        identity.pop("preferred_name", None)
+        identity.pop("identifiers", None)
+
+    network = signature.get("network")
+    if isinstance(network, dict):
+        network.pop("ip_addresses", None)
+        network.pop("mac_addresses", None)
+
+    return signature
+
+
+def classification_lookup_signature_hash(fingerprint: dict[str, Any]) -> str:
+    signature = classification_lookup_signature(fingerprint)
+    canonical = json.dumps(signature, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def get_latest_fingerprint(conn: psycopg.Connection, asset_id: str) -> Optional[dict[str, Any]]:
     with conn.cursor() as cur:
         cur.execute(

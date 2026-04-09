@@ -22,10 +22,12 @@ const elements = {
   detailTitle: document.getElementById("detail-title"),
   detailDescription: document.getElementById("detail-description"),
   detailList: document.getElementById("detail-list"),
+  assetCount: document.getElementById("asset-count"),
   adminStatus: document.getElementById("admin-status"),
   recentChanges: document.getElementById("recent-changes"),
-  notableAssets: document.getElementById("notable-assets"),
   assetsTable: document.getElementById("assets-table"),
+  filterAssetsAll: document.getElementById("filter-assets-all"),
+  filterAssetsNotable: document.getElementById("filter-assets-notable"),
   refreshButton: document.getElementById("refresh-button"),
   emptyTemplate: document.getElementById("empty-state-template"),
 };
@@ -35,8 +37,10 @@ const dashboardState = {
   observations: [],
   fingerprints: [],
   changes: [],
+  notableAssetIds: new Set(),
   adminStatus: null,
-  activeSummary: "assets",
+  activeSummary: "changes",
+  assetFilter: "all",
 };
 
 function escapeHtml(value) {
@@ -111,60 +115,55 @@ function renderRecentChanges(changes) {
     .join("");
 }
 
-function renderNotableAssets(assets) {
-  if (!assets.length) {
-    setEmptyState(elements.notableAssets, "No notable assets right now.");
-    return;
-  }
+function assetInventoryRows() {
+  const assets =
+    dashboardState.assetFilter === "notable"
+      ? dashboardState.assets.filter((asset) => dashboardState.notableAssetIds.has(asset.asset_id))
+      : dashboardState.assets;
 
-  elements.notableAssets.innerHTML = assets
-    .slice(0, 8)
-    .map(
-      (asset) => `
-        <article class="list-card">
-          <div class="list-topline">
-            <div class="list-title">${escapeHtml(asset.preferred_name || "Unnamed asset")}</div>
-            <span class="pill">${escapeHtml(asset.role || "unknown")}</span>
-          </div>
-          <div class="list-meta">
-            <span>Confidence ${escapeHtml(formatConfidence(asset.role_confidence))}</span>
-            <span>Last seen ${escapeHtml(formatDate(asset.last_seen))}</span>
-          </div>
-          <div class="list-meta mono">
-            <span>${escapeHtml(asset.asset_id)}</span>
-          </div>
-        </article>
-      `
-    )
-    .join("");
+  return assets.map((asset) => {
+    const isNotable = dashboardState.notableAssetIds.has(asset.asset_id);
+    return `
+      <tr>
+        <td><span class="asset-name">${escapeHtml(asset.preferred_name || "Unnamed asset")}</span></td>
+        <td>${isNotable ? '<span class="pill notable">Most notable</span>' : '<span class="muted-cell">-</span>'}</td>
+        <td>${escapeHtml(asset.role || "unknown")}</td>
+        <td>${escapeHtml(formatConfidence(asset.role_confidence))}</td>
+        <td>${escapeHtml(formatDate(asset.first_seen))}</td>
+        <td>${escapeHtml(formatDate(asset.last_seen))}</td>
+        <td class="mono">${escapeHtml(asset.asset_id)}</td>
+      </tr>
+    `;
+  });
 }
 
-function renderAssetsTable(assets) {
-  if (!assets.length) {
+function renderAssetsTable() {
+  const rows = assetInventoryRows();
+  const shownCount = rows.length;
+  const totalCount = dashboardState.assets.length;
+  const colSpan = 7;
+  elements.assetCount.textContent = `${shownCount}/${totalCount}`;
+  if (!rows.length) {
+    const message =
+      dashboardState.assetFilter === "notable"
+        ? "No notable assets available."
+        : "No assets available.";
     elements.assetsTable.innerHTML = `
       <tr>
-        <td colspan="6">
-          <div class="empty-state">No assets available.</div>
+        <td colspan="${colSpan}">
+          <div class="empty-state">${message}</div>
         </td>
       </tr>
     `;
     return;
   }
 
-  elements.assetsTable.innerHTML = assets
-    .map(
-      (asset) => `
-        <tr>
-          <td><span class="asset-name">${escapeHtml(asset.preferred_name || "Unnamed asset")}</span></td>
-          <td>${escapeHtml(asset.role || "unknown")}</td>
-          <td>${escapeHtml(formatConfidence(asset.role_confidence))}</td>
-          <td>${escapeHtml(formatDate(asset.first_seen))}</td>
-          <td>${escapeHtml(formatDate(asset.last_seen))}</td>
-          <td class="mono">${escapeHtml(asset.asset_id)}</td>
-        </tr>
-      `
-    )
-    .join("");
+  elements.assetsTable.innerHTML = rows.join("");
+}
+
+function updateAssetFilterButtons() {
+  elements.filterAssetsAll.classList.toggle("is-active", dashboardState.assetFilter === "all");
+  elements.filterAssetsNotable.classList.toggle("is-active", dashboardState.assetFilter === "notable");
 }
 
 function buildQuickLinks() {
@@ -252,28 +251,13 @@ function renderSummaryDetail(summaryKey) {
   dashboardState.activeSummary = summaryKey;
 
   if (summaryKey === "assets") {
-    elements.detailTitle.textContent = "Total assets";
-    elements.detailDescription.textContent = "Current asset inventory ordered by last seen.";
-    renderDetailCards(
-      dashboardState.assets,
-      (asset) => `
-        <article class="list-card">
-          <div class="list-topline">
-            <div class="list-title">${escapeHtml(asset.preferred_name || "Unnamed asset")}</div>
-            <span class="pill">${escapeHtml(asset.role || "unknown")}</span>
-          </div>
-          <div class="list-meta">
-            <span>Confidence ${escapeHtml(formatConfidence(asset.role_confidence))}</span>
-            <span>First seen ${escapeHtml(formatDate(asset.first_seen))}</span>
-            <span>Last seen ${escapeHtml(formatDate(asset.last_seen))}</span>
-          </div>
-          <div class="list-meta mono">
-            <span>${escapeHtml(asset.asset_id)}</span>
-          </div>
-        </article>
-      `,
-      "No assets available."
-    );
+    dashboardState.assetFilter = "all";
+    updateAssetFilterButtons();
+    renderAssetsTable();
+    window.scrollTo({
+      top: elements.assetsTable.closest(".panel").offsetTop - 24,
+      behavior: "smooth",
+    });
     return;
   }
 
@@ -380,6 +364,7 @@ async function loadDashboard() {
     dashboardState.observations = observations.observations || [];
     dashboardState.fingerprints = fingerprints.fingerprints || [];
     dashboardState.changes = daily.recent_changes || [];
+    dashboardState.notableAssetIds = new Set((daily.notable_assets || []).map((asset) => asset.asset_id));
     dashboardState.adminStatus = adminStatus;
 
     elements.healthStatus.textContent = health.status || "ok";
@@ -390,8 +375,8 @@ async function loadDashboard() {
     elements.statChanges.textContent = daily.recent_change_count ?? "-";
 
     renderRecentChanges(dashboardState.changes);
-    renderNotableAssets(daily.notable_assets || []);
-    renderAssetsTable(dashboardState.assets);
+    updateAssetFilterButtons();
+    renderAssetsTable();
     renderAdminStatus(dashboardState.adminStatus);
     renderSummaryDetail(dashboardState.activeSummary);
   } catch (error) {
@@ -402,8 +387,7 @@ async function loadDashboard() {
     setEmptyState(elements.detailList, `Failed to load detail data: ${error.message}`);
     setEmptyState(elements.adminStatus, `Failed to load admin status: ${error.message}`);
     setEmptyState(elements.recentChanges, `Failed to load dashboard: ${error.message}`);
-    setEmptyState(elements.notableAssets, "Dashboard data unavailable.");
-    renderAssetsTable([]);
+    renderAssetsTable();
   } finally {
     elements.refreshButton.disabled = false;
     elements.refreshButton.textContent = "Refresh";
@@ -428,6 +412,18 @@ elements.summaryFingerprints.addEventListener("click", () => {
 
 elements.summaryChanges.addEventListener("click", () => {
   renderSummaryDetail("changes");
+});
+
+elements.filterAssetsAll.addEventListener("click", () => {
+  dashboardState.assetFilter = "all";
+  updateAssetFilterButtons();
+  renderAssetsTable();
+});
+
+elements.filterAssetsNotable.addEventListener("click", () => {
+  dashboardState.assetFilter = "notable";
+  updateAssetFilterButtons();
+  renderAssetsTable();
 });
 
 loadDashboard();

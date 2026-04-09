@@ -215,6 +215,8 @@ The summary cards on the dashboard are clickable. Selecting `Total assets`, `Obs
 
 The dashboard also includes an `Admin status` panel. It shows API status, scheduler freshness, summary counts, and quick links to the main operator surfaces.
 
+The asset inventory now uses a single unified table. Assets identified as notable by the daily report are tagged inline, and the table includes a client-side filter to switch between `All` assets and `Most notable`.
+
 The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`. `brain` waits for Postgres readiness, and the dependent services wait for the API health endpoint before starting.
 
 The `brain` service is now built from `brain/Dockerfile` with pinned Python dependencies in `brain/requirements.txt` instead of installing packages dynamically at container startup.
@@ -366,6 +368,8 @@ CLASSIFICATION_FALLBACK_CONFIDENCE=0.10
 During install, HomelabSec validates host-side Ollama access through `OLLAMA_HOST_URL` and confirms the configured `OLLAMA_MODEL` exists via the Ollama tags API.
 
 If Ollama is unreachable or returns an invalid transport response, the classification endpoints now fail with `502` instead of a generic `500`. If the model returns non-JSON content, the API keeps the existing soft-fallback behavior and stores an `unknown` classification with `raw_model_output` included in the response.
+
+Classification is now lookup-first and LLM-second. HomelabSec learns a reusable classification signature from prior LLM classifications and stores the learned role plus confidence in `classification_lookup`. That learned table is then checked before calling Ollama again, which makes repeated scans and similar newly discovered hosts much faster. Low-confidence learned entries are visible through the API and are good candidates for deeper investigation such as SSH-based inspection.
 
 ## Database Migrations
 
@@ -627,6 +631,7 @@ Example response:
     "role": "nas",
     "confidence": 0.97
   },
+  "classification_source": "lookup",
   "fingerprint": {},
   "fingerprint_store": {
     "changed": false
@@ -647,7 +652,35 @@ Example response:
 {
   "total_assets": 12,
   "classified_ok": 12,
+  "lookup_hits": 9,
+  "llm_classified": 3,
   "errors": 0,
   "failed": []
+}
+```
+
+Inspect learned lookup entries:
+
+```bash
+curl http://localhost:8088/classification_lookup
+```
+
+Example response:
+
+```json
+{
+  "entries": [
+    {
+      "lookup_id": "1f8c81f3-7d69-4331-b9e9-b10b21527a0e",
+      "signature_hash": "4f5b4f4d20b9f5f93a8b8d80c271cd9c5cc6d0b991a8ea7d9db5bdb66f60f1c5",
+      "signature": {},
+      "role": "nas",
+      "confidence": 0.97,
+      "source": "llm_learned",
+      "sample_count": 4,
+      "first_learned_at": "2026-04-09T14:00:00+00:00",
+      "last_learned_at": "2026-04-09T14:10:00+00:00"
+    }
+  ]
 }
 ```

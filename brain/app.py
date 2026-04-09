@@ -16,9 +16,15 @@ from brainlib.assets import NmapXmlError, normalize_role, parse_nmap_xml
 from brainlib.changes import detect_changes_all as detect_changes_all_records
 from brainlib.changes import detect_changes_for_asset as detect_changes_for_asset_record
 from brainlib.classification import classify_all_assets, classify_asset as classify_asset_record
+from brainlib.classification import list_classification_lookup_entries
 from brainlib.database import db
 from brainlib.errors import bad_gateway, bad_request, not_found
-from brainlib.fingerprints import diff_fingerprints, fingerprint_hash
+from brainlib.fingerprints import (
+    classification_lookup_signature,
+    classification_lookup_signature_hash,
+    diff_fingerprints,
+    fingerprint_hash,
+)
 from brainlib.ingest import ingest_nmap_xml as ingest_nmap_xml_record
 from brainlib.inventory import fingerprint_detail, list_assets as list_assets_records
 from brainlib.inventory import list_fingerprints as list_fingerprints_records
@@ -123,6 +129,12 @@ def list_observations():
 def list_fingerprints():
     with db() as conn:
         return list_fingerprints_records(conn)
+
+
+@app.get("/classification_lookup")
+def list_classification_lookup():
+    with db() as conn:
+        return list_classification_lookup_entries(conn)
 
 
 @app.post("/classify/{asset_id}")

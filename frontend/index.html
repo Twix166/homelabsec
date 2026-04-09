@@ -78,24 +78,26 @@
           <div id="recent-changes" class="stack-list"></div>
         </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <h2>Notable assets</h2>
-            <p>Unknown or weakly classified assets.</p>
-          </div>
-          <div id="notable-assets" class="stack-list"></div>
-        </section>
-
         <section class="panel panel-wide">
           <div class="section-heading">
-            <h2>Asset inventory</h2>
-            <p>Current assets ordered by last seen.</p>
+            <div>
+              <h2>Asset inventory</h2>
+              <p>Current assets ordered by last seen, with notable systems tagged inline.</p>
+            </div>
+            <div class="inventory-controls">
+              <div id="asset-count" class="asset-count">0/0 shown</div>
+              <div class="filter-group" role="group" aria-label="Asset inventory filter">
+              <button id="filter-assets-all" class="filter-button is-active" type="button">All</button>
+              <button id="filter-assets-notable" class="filter-button" type="button">Most notable</button>
+              </div>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Flags</th>
                   <th>Role</th>
                   <th>Confidence</th>
                   <th>First seen</th>

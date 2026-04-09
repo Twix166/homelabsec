@@ -74,6 +74,7 @@ def test_schema_migrations_table_is_initialized(integration_brain_module, integr
 
     assert "0000_schema_migrations" in versions
     assert "0001_initial" in versions
+    assert "0002_classification_lookup" in versions
 
 
 def test_ingest_detect_changes_and_reports_flow(client):
@@ -141,6 +142,7 @@ def test_classify_endpoints_with_mocked_ollama(client, mock_ollama):
     classify_payload = classify_response.json()
     assert classify_payload["classification"]["role"] == "web_server"
     assert classify_payload["classification"]["confidence"] == 0.88
+    assert classify_payload["classification_source"] == "llm"
     assert classify_payload["fingerprint"]["role"] == "web_server"
 
     classify_all_response = client.post("/classify_all")
@@ -148,6 +150,8 @@ def test_classify_endpoints_with_mocked_ollama(client, mock_ollama):
     classify_all_payload = classify_all_response.json()
     assert classify_all_payload["total_assets"] == 1
     assert classify_all_payload["classified_ok"] == 1
+    assert classify_all_payload["lookup_hits"] == 1
+    assert classify_all_payload["llm_classified"] == 0
     assert classify_all_payload["errors"] == 0
 
     detect_single_response = client.get(f"/detect_changes/{asset_id}")
@@ -170,7 +174,14 @@ def test_detect_changes_missing_asset_returns_404(client):
     assert response.json()["detail"] == "Asset not found"
 
 
-def test_classify_returns_502_when_ollama_is_unreachable(client, integration_brain_module, monkeypatch):
+def test_classify_returns_502_when_ollama_is_unreachable(client, integration_db_url, monkeypatch):
+    import psycopg
+
+    with psycopg.connect(integration_db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM classification_lookup")
+            conn.commit()
+
     ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
     assert ingest_response.status_code == 200
 
@@ -185,6 +196,94 @@ def test_classify_returns_502_when_ollama_is_unreachable(client, integration_bra
 
     assert response.status_code == 502
     assert "Ollama request failed" in response.json()["detail"]
+
+
+def test_classification_lookup_reuses_learned_result_without_ollama(
+    client,
+    monkeypatch,
+    integration_db_url,
+):
+    import psycopg
+
+    with psycopg.connect(integration_db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM classification_lookup")
+            conn.commit()
+
+    ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
+    assert ingest_response.status_code == 200
+    asset_id = client.get("/assets").json()["assets"][0]["asset_id"]
+
+    calls = {"count": 0}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "model": "homelabsec-classifier",
+                "message": {
+                    "content": '{"role":"web_server","confidence":0.88}',
+                },
+            }
+
+    def first_post(url, json, timeout):
+        calls["count"] += 1
+        return FakeResponse()
+
+    monkeypatch.setattr("brainlib.ollama.requests.post", first_post)
+
+    first_response = client.post(f"/classify/{asset_id}")
+    assert first_response.status_code == 200
+    assert first_response.json()["classification_source"] == "llm"
+    assert calls["count"] == 1
+
+    with psycopg.connect(integration_db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE assets
+                SET role = NULL, role_confidence = NULL
+                WHERE asset_id = %s
+                """,
+                (asset_id,),
+            )
+            conn.commit()
+
+    def failing_post(url, json, timeout):
+        raise AssertionError("lookup path should not call Ollama")
+
+    monkeypatch.setattr("brainlib.ollama.requests.post", failing_post)
+
+    second_response = client.post(f"/classify/{asset_id}")
+    assert second_response.status_code == 200
+    second_payload = second_response.json()
+    assert second_payload["classification"]["role"] == "web_server"
+    assert second_payload["classification"]["confidence"] == 0.88
+    assert second_payload["classification_source"] == "lookup"
+    assert second_payload["lookup"]["sample_count"] >= 1
+
+
+def test_classification_lookup_endpoint_lists_learned_entries(client, mock_ollama):
+    ingest_response = client.post("/ingest/nmap_xml", json={"xml_path": str(FIXTURE_PATH)})
+    assert ingest_response.status_code == 200
+    asset_id = client.get("/assets").json()["assets"][0]["asset_id"]
+
+    classify_response = client.post(f"/classify/{asset_id}")
+    assert classify_response.status_code == 200
+
+    response = client.get("/classification_lookup")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["entries"]) == 1
+    entry = payload["entries"][0]
+    assert entry["role"] == "web_server"
+    assert entry["confidence"] == 0.88
+    assert entry["source"] == "llm_learned"
+    assert entry["sample_count"] >= 1
+    assert "network" in entry["signature"]
 
 
 def test_detect_changes_is_idempotent_for_same_fingerprint_pair(client, integration_db_url):

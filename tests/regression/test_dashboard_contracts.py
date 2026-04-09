@@ -186,8 +186,12 @@ def test_dashboard_markup_exposes_clickable_summary_cards():
     assert '<button id="summary-observations"' in html
     assert '<button id="summary-fingerprints"' in html
     assert '<button id="summary-changes"' in html
+    assert 'id="filter-assets-all"' in html
+    assert 'id="filter-assets-notable"' in html
+    assert 'id="asset-count"' in html
     assert 'id="detail-list"' in html
     assert 'id="admin-status"' in html
+    assert "Most notable" in html
 
 
 def test_dashboard_script_wires_frontend_contracts():
@@ -200,4 +204,8 @@ def test_dashboard_script_wires_frontend_contracts():
     assert 'renderSummaryDetail("observations")' in script
     assert 'renderSummaryDetail("fingerprints")' in script
     assert 'renderSummaryDetail("changes")' in script
+    assert 'elements.assetCount.textContent = `${shownCount}/${totalCount}`' in script
     assert "renderAdminStatus(dashboardState.adminStatus)" in script
+    assert 'dashboardState.notableAssetIds = new Set' in script
+    assert 'dashboardState.assetFilter = "notable"' in script
+    assert "Most notable" in script
