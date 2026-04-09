@@ -75,6 +75,48 @@ function formatConfidence(value) {
   return `${Math.round(value * 100)}%`;
 }
 
+function confidenceBand(value) {
+  if (typeof value !== "number") {
+    return {
+      label: "Unscored",
+      className: "confidence-unknown",
+      summary: "No confidence score is available yet.",
+      nextStep: "Run classification again after discovery, or enrich the asset with more identifying signals.",
+    };
+  }
+
+  if (value >= 0.85) {
+    return {
+      label: "High",
+      className: "confidence-high",
+      summary: "The score is high because the fingerprint has strong service and platform signals that match a known role.",
+      nextStep: "Keep discovery current. If you want to validate it further, confirm the exposed services or compare against the learned lookup entry.",
+    };
+  }
+
+  if (value >= 0.6) {
+    return {
+      label: "Medium",
+      className: "confidence-medium",
+      summary: "The score is moderate because some signals match, but the fingerprint is still somewhat ambiguous.",
+      nextStep: "Improve it by collecting more service details, identifying the host more precisely, or validating it over SSH with a targeted script.",
+    };
+  }
+
+  return {
+    label: "Low",
+    className: "confidence-low",
+    summary: "The score is low because the current fingerprint is weak, generic, or missing enough detail for a reliable role match.",
+    nextStep: "Improve it by rescanning, exposing more service metadata, or using SSH-based inspection to gather stronger host evidence.",
+  };
+}
+
+function confidenceTooltip(value) {
+  const band = confidenceBand(value);
+  const score = typeof value === "number" ? formatConfidence(value) : "Not scored";
+  return `${band.label} confidence (${score}). ${band.summary} ${band.nextStep}`;
+}
+
 function setEmptyState(container, message) {
   container.innerHTML = "";
   const node = elements.emptyTemplate.content.firstElementChild.cloneNode(true);
@@ -123,12 +165,21 @@ function assetInventoryRows() {
 
   return assets.map((asset) => {
     const isNotable = dashboardState.notableAssetIds.has(asset.asset_id);
+    const confidence = confidenceBand(asset.role_confidence);
     return `
       <tr>
         <td><span class="asset-name">${escapeHtml(asset.preferred_name || "Unnamed asset")}</span></td>
         <td>${isNotable ? '<span class="pill notable">Most notable</span>' : '<span class="muted-cell">-</span>'}</td>
         <td>${escapeHtml(asset.role || "unknown")}</td>
-        <td>${escapeHtml(formatConfidence(asset.role_confidence))}</td>
+        <td>
+          <span
+            class="pill confidence-pill ${escapeHtml(confidence.className)}"
+            title="${escapeHtml(confidenceTooltip(asset.role_confidence))}"
+            aria-label="${escapeHtml(confidenceTooltip(asset.role_confidence))}"
+          >
+            ${escapeHtml(formatConfidence(asset.role_confidence))}
+          </span>
+        </td>
         <td>${escapeHtml(formatDate(asset.first_seen))}</td>
         <td>${escapeHtml(formatDate(asset.last_seen))}</td>
         <td class="mono">${escapeHtml(asset.asset_id)}</td>

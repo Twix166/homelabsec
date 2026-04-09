@@ -402,6 +402,38 @@ th {
   color: var(--high);
 }
 
+.confidence-pill {
+  position: relative;
+  min-width: 72px;
+  justify-content: center;
+  font-weight: 700;
+  cursor: help;
+}
+
+.confidence-high {
+  background: rgba(141, 226, 198, 0.18);
+  color: #bdf2df;
+  border: 1px solid rgba(141, 226, 198, 0.28);
+}
+
+.confidence-medium {
+  background: rgba(255, 192, 120, 0.16);
+  color: #ffd79f;
+  border: 1px solid rgba(255, 192, 120, 0.24);
+}
+
+.confidence-low {
+  background: rgba(255, 122, 122, 0.16);
+  color: #ffb0b0;
+  border: 1px solid rgba(255, 122, 122, 0.24);
+}
+
+.confidence-unknown {
+  background: rgba(169, 186, 200, 0.14);
+  color: #d4dee7;
+  border: 1px solid rgba(169, 186, 200, 0.2);
+}
+
 .list-meta,
 .mono {
   font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;

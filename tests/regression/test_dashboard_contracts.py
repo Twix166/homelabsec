@@ -204,6 +204,9 @@ def test_dashboard_script_wires_frontend_contracts():
     assert 'renderSummaryDetail("observations")' in script
     assert 'renderSummaryDetail("fingerprints")' in script
     assert 'renderSummaryDetail("changes")' in script
+    assert "function confidenceBand(value)" in script
+    assert "function confidenceTooltip(value)" in script
+    assert 'class="pill confidence-pill ${escapeHtml(confidence.className)}"' in script
     assert 'elements.assetCount.textContent = `${shownCount}/${totalCount}`' in script
     assert "renderAdminStatus(dashboardState.adminStatus)" in script
     assert 'dashboardState.notableAssetIds = new Set' in script
