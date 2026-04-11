@@ -26,6 +26,8 @@ def test_brain_config_validates_expected_values(monkeypatch):
     monkeypatch.setenv("CLASSIFICATION_FALLBACK_CONFIDENCE", "0.55")
     monkeypatch.setenv("OBSERVATIONS_LIST_LIMIT", "25")
     monkeypatch.setenv("ADMIN_STALE_SCAN_MINUTES", "120")
+    monkeypatch.setenv("FINGERBANK_MIN_SCORE_ACCEPT", "60")
+    monkeypatch.setenv("FINGERBANK_MIN_SCORE_AUTO_ACCEPT", "80")
 
     config_module = _load_module("brain_config_valid", BRAIN_CONFIG_PATH)
     config = config_module.load_brain_config(os.environ)
@@ -35,6 +37,8 @@ def test_brain_config_validates_expected_values(monkeypatch):
     assert config.classification_fallback_confidence == 0.55
     assert config.observations_list_limit == 25
     assert config.admin_stale_scan_minutes == 120
+    assert config.fingerbank_min_score_accept == 60
+    assert config.fingerbank_min_score_auto_accept == 80
 
 
 def test_brain_config_rejects_invalid_confidence(monkeypatch):
@@ -44,6 +48,16 @@ def test_brain_config_rejects_invalid_confidence(monkeypatch):
 
     with pytest.raises(Exception):
         _load_module("brain_config_invalid_confidence", BRAIN_CONFIG_PATH)
+
+
+def test_brain_config_rejects_invalid_fingerbank_thresholds(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/homelabsec")
+    monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434")
+    monkeypatch.setenv("FINGERBANK_MIN_SCORE_ACCEPT", "90")
+    monkeypatch.setenv("FINGERBANK_MIN_SCORE_AUTO_ACCEPT", "80")
+
+    with pytest.raises(Exception):
+        _load_module("brain_config_invalid_fingerbank_thresholds", BRAIN_CONFIG_PATH)
 
 
 def test_scheduler_config_rejects_invalid_api_base(monkeypatch):

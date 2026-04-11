@@ -4,6 +4,7 @@ from typing import Any
 
 import psycopg
 
+from brainlib.admin_console import list_enrichment_modules, list_raw_data_sources
 from brainlib.config import ADMIN_STALE_SCAN_MINUTES, utcnow_iso
 from brainlib.reports import summary_report
 from brainlib.versioning import current_version
@@ -56,6 +57,8 @@ def admin_status(conn: psycopg.Connection) -> dict[str, Any]:
         "api_status": "ok",
         "version": current_version(),
         "summary": summary,
+        "enrichment_modules": list_enrichment_modules(conn)["modules"],
+        "raw_data_sources": list_raw_data_sources(conn)["sources"],
         "latest_scan_run": latest_scan,
         "scheduler_freshness": freshness,
     }

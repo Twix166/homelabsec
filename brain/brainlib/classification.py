@@ -5,10 +5,19 @@ from typing import Any
 
 import psycopg
 
+from brainlib.admin_console import is_module_enabled
 from brainlib.assets import normalize_role
-from brainlib.config import CLASSIFICATION_FALLBACK_CONFIDENCE, CLASSIFICATION_FALLBACK_ROLE
+from brainlib.config import (
+    CLASSIFICATION_FALLBACK_CONFIDENCE,
+    CLASSIFICATION_FALLBACK_ROLE,
+    FINGERBANK_ENABLED,
+    FINGERBANK_MIN_SCORE_ACCEPT,
+    FINGERBANK_MIN_SCORE_AUTO_ACCEPT,
+)
 from brainlib.database import asset_exists
 from brainlib.errors import not_found
+from brainlib.fingerbank_client import FingerbankError, interrogate_fingerbank
+from brainlib.fingerbank_evidence import build_fingerbank_evidence
 from brainlib.fingerprints import (
     build_fingerprint,
     classification_lookup_signature,
@@ -178,6 +187,85 @@ def classify_asset(conn: psycopg.Connection, asset_id: str) -> dict[str, Any]:
             "raw_model_output": None,
         }
 
+    fingerbank_suggestion = None
+    if FINGERBANK_ENABLED and is_module_enabled(conn, "fingerbank_classification"):
+        evidence_record = build_fingerbank_evidence(conn, asset_id)
+        if evidence_record:
+            try:
+                fingerbank_match = interrogate_fingerbank(
+                    conn,
+                    asset_id,
+                    evidence_record["evidence_hash"],
+                    evidence_record["evidence"],
+                )
+            except FingerbankError:
+                fingerbank_match = None
+            if fingerbank_match:
+                fingerbank_suggestion = fingerbank_match
+                mapped_role = fingerbank_match.get("mapped_role")
+                mapped_confidence = fingerbank_match.get("mapped_confidence")
+                score = float(fingerbank_match.get("score") or 0.0)
+                if (
+                    mapped_role
+                    and mapped_confidence is not None
+                    and score >= FINGERBANK_MIN_SCORE_AUTO_ACCEPT
+                ):
+                    updated_fingerprint, fingerprint_store_result = apply_classification_to_asset(
+                        conn,
+                        asset_id,
+                        mapped_role,
+                        float(mapped_confidence),
+                    )
+                    learn_classification_lookup_entry(
+                        conn,
+                        fingerprint,
+                        mapped_role,
+                        float(mapped_confidence),
+                        source="fingerbank_learned",
+                    )
+                    return {
+                        "asset_id": asset_id,
+                        "classification": {
+                            "role": mapped_role,
+                            "confidence": float(mapped_confidence),
+                        },
+                        "classification_source": "fingerbank",
+                        "fingerbank_match": fingerbank_match,
+                        "fingerprint": updated_fingerprint,
+                        "fingerprint_store": fingerprint_store_result,
+                        "raw_model_output": None,
+                    }
+                if mapped_role and score >= FINGERBANK_MIN_SCORE_ACCEPT:
+                    fingerbank_suggestion = {
+                        **fingerbank_match,
+                        "suggested_role": mapped_role,
+                        "suggested_confidence": float(mapped_confidence)
+                        if mapped_confidence is not None
+                        else None,
+                    }
+
+    if not is_module_enabled(conn, "llm_classification"):
+        role = fingerprint.get("role") or CLASSIFICATION_FALLBACK_ROLE
+        confidence = float(fingerprint.get("role_confidence") or CLASSIFICATION_FALLBACK_CONFIDENCE)
+        updated_fingerprint, fingerprint_store_result = apply_classification_to_asset(
+            conn,
+            asset_id,
+            role,
+            confidence,
+        )
+        return {
+            "asset_id": asset_id,
+            "classification": {
+                "role": role,
+                "confidence": confidence,
+            },
+            "classification_source": "disabled",
+            "fingerbank_suggestion": fingerbank_suggestion,
+            "fingerprint": updated_fingerprint,
+            "fingerprint_store": fingerprint_store_result,
+            "raw_model_output": None,
+        }
+
     data = chat_json(
         [
             {
@@ -235,6 +323,7 @@ def classify_asset(conn: psycopg.Connection, asset_id: str) -> dict[str, Any]:
             "confidence": confidence,
         },
         "classification_source": "llm",
+        "fingerbank_suggestion": fingerbank_suggestion,
         "fingerprint": updated_fingerprint,
         "fingerprint_store": fingerprint_store_result,
         "raw_model_output": raw_error,
@@ -249,6 +338,7 @@ def classify_all_assets(
     errors = 0
     lookup_hits = 0
     llm_classified = 0
+    fingerbank_classified = 0
     failed = []
 
     with conn.cursor() as cur:
@@ -267,6 +357,8 @@ def classify_all_assets(
             ok += 1
             if result.get("classification_source") == "lookup":
                 lookup_hits += 1
+            elif result.get("classification_source") == "fingerbank":
+                fingerbank_classified += 1
             elif result.get("classification_source") == "llm":
                 llm_classified += 1
         except Exception as exc:
@@ -282,6 +374,7 @@ def classify_all_assets(
         "total_assets": len(asset_ids),
         "classified_ok": ok,
         "lookup_hits": lookup_hits,
+        "fingerbank_classified": fingerbank_classified,
         "llm_classified": llm_classified,
         "errors": errors,
         "failed": failed,

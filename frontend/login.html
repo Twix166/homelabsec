@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HomelabSec Login</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell shell-narrow">
+      <section class="panel auth-panel">
+        <p class="eyebrow">HomelabSec</p>
+        <h1>Sign in</h1>
+        <p class="lede">Sign in to access the dashboard, profile tools, and admin console.</p>
+        <form id="login-form" class="auth-form">
+          <label>
+            <span>Username</span>
+            <input id="login-username" name="username" type="text" autocomplete="username" required />
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button id="login-submit" class="refresh-button" type="submit">Sign in</button>
+        </form>
+        <div id="login-error" class="empty-state auth-error" hidden></div>
+      </section>
+    </div>
+    <script src="/auth.js"></script>
+    <script src="/login.js"></script>
+  </body>
+</html>

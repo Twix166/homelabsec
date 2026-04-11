@@ -55,6 +55,10 @@ OBSERVATIONS_LIST_LIMIT=200
 FINGERPRINTS_LIST_LIMIT=200
 NOTABLE_ASSET_LIMIT=20
 ADMIN_STALE_SCAN_MINUTES=90
+AUTH_SESSION_DAYS=7
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_PASSWORD=change-me-now
+DEFAULT_ADMIN_DISPLAY_NAME=Administrator
 LOG_LEVEL=INFO
 SCHEDULER_API_BASE=http://127.0.0.1:8088
 SCHEDULER_METRICS_PORT=9100
@@ -218,6 +222,57 @@ The dashboard also includes an `Admin status` panel. It shows API status, schedu
 The asset inventory now uses a single unified table. Assets identified as notable by the daily report are tagged inline, and the table includes a client-side filter to switch between `All` assets and `Most notable`.
 The inventory also supports confidence-color filters and sortable columns, and each asset row links to a dedicated detail page with exposed services, learned lookup data, and a host rescan action.
 
+The web UI now has an application login page, profile menu, profile editor, and a separate admin console. The profile menu appears at the top-right of the main pages and includes `Edit profile`, `Sign out`, and `Admin console` when the logged-in user has admin rights.
+
+The admin console is split into three areas:
+
+- data enrichment: enable or disable enrichment modules such as MAC brand lookup and LLM categorisation
+- raw data sources: manage source-level switches for ingest and discovery paths
+- user management: create users and manage admin versus operator access
+
+The default admin account is bootstrapped from environment variables if no users exist yet:
+
+- `DEFAULT_ADMIN_USERNAME`
+- `DEFAULT_ADMIN_PASSWORD`
+- `DEFAULT_ADMIN_DISPLAY_NAME`
+
+Change those defaults before exposing the deployment beyond a trusted environment.
+
+## Lynis Enrichment
+
+HomelabSec now includes an optional `lynis-runner` microservice for host-audit enrichment.
+
+Important design constraint: Lynis audits the system it runs on. It is not a native remote scanner like Nmap. Because of that, HomelabSec integrates Lynis by orchestrating execution on the target host over SSH.
+
+The current flow is:
+
+1. configure an SSH-capable target for an asset from the asset detail page
+2. click `Lynis audit` on that asset
+3. HomelabSec queues the job
+4. the `lynis-runner` microservice claims the job
+5. the runner connects to the target host over SSH
+6. if `lynis` is not already present, the runner installs or updates it under the remote user home directory at `~/.local/share/homelabsec/lynis` from the official CISOfy GitHub repository
+7. the runner executes `lynis audit system --quick` with a dedicated audit timeout so longer scans do not fail at the SSH command timeout boundary
+8. the parsed summary is stored and shown back in the Lynis modal
+
+The runner currently assumes:
+
+- a Unix-like target host reachable over SSH
+- password-based SSH authentication
+- optional `sudo` on the target when deeper audit coverage is needed
+- `git` is available on the target if Lynis must be installed from the official repository
+
+Relevant Lynis runner settings:
+
+- `LYNIS_SSH_TIMEOUT_SECONDS`: SSH connect and short command timeout
+- `LYNIS_AUDIT_TIMEOUT_SECONDS`: longer timeout for the actual `lynis audit system` run
+
+The upstream source used for Lynis installation is:
+
+- official repository: `https://github.com/CISOfy/lynis`
+
+This was chosen because it is the official upstream, open source, free to use, and actively maintained by CISOfy.
+
 The compose stack now includes healthchecks for `postgres`, `brain`, `scheduler`, and `frontend`. `brain` waits for Postgres readiness, and the dependent services wait for the API health endpoint before starting.
 
 The `brain` service is now built from `brain/Dockerfile` with pinned Python dependencies in `brain/requirements.txt` instead of installing packages dynamically at container startup.
@@ -371,6 +426,64 @@ During install, HomelabSec validates host-side Ollama access through `OLLAMA_HOS
 If Ollama is unreachable or returns an invalid transport response, the classification endpoints now fail with `502` instead of a generic `500`. If the model returns non-JSON content, the API keeps the existing soft-fallback behavior and stores an `unknown` classification with `raw_model_output` included in the response.
 
 Classification is now lookup-first and LLM-second. HomelabSec learns a reusable classification signature from prior LLM classifications and stores the learned role plus confidence in `classification_lookup`. That learned table is then checked before calling Ollama again, which makes repeated scans and similar newly discovered hosts much faster. Low-confidence learned entries are visible through the API and are good candidates for deeper investigation such as SSH-based inspection.
+
+MAC brand enrichment is also available in the asset inventory and asset detail views. HomelabSec resolves the brand in this order:
+
+1. use the `vendor` value observed directly in the Nmap XML when it is present
+2. otherwise fall back to an offline OUI lookup using `pymanuf`
+
+`pymanuf` was chosen because it is MIT-licensed, works locally without depending on a hosted API at runtime, and is actively maintained with regular releases. That makes it a better fit than an ad hoc third-party lookup service for a self-hosted deployment.
+
+## Passive Fingerbank Collectors
+
+HomelabSec now supports optional Fingerbank-based device enrichment. The classification order is:
+
+1. learned local classification lookup
+2. Fingerbank passive evidence match
+3. Ollama fallback
+4. default fallback role
+
+Fingerbank enrichment is driven by passive evidence collected into `network_observations` and then normalized into a deterministic evidence object. The current passive collectors are:
+
+- DHCP: captures MAC, IP, hostname, DHCP Option 55 fingerprint, and DHCP Option 60 vendor class
+- mDNS: captures advertised local services and hostnames
+- SSDP: captures UPnP `SERVER`, `USER-AGENT`, and `LOCATION` strings
+
+Relevant environment variables:
+
+```bash
+FINGERBANK_ENABLED=true
+FINGERBANK_API_KEY=
+FINGERBANK_BASE_URL=https://api.fingerbank.org
+FINGERBANK_TIMEOUT_SECONDS=10
+FINGERBANK_MIN_SCORE_ACCEPT=51
+FINGERBANK_MIN_SCORE_AUTO_ACCEPT=76
+
+COLLECTORS_ENABLED=true
+COLLECTOR_INTERFACE=any
+COLLECTOR_DHCP_ENABLED=true
+COLLECTOR_MDNS_ENABLED=true
+COLLECTOR_SSDP_ENABLED=true
+```
+
+Fingerbank calls are cached by deterministic `evidence_hash`, including no-match results, so the same passive signature does not repeatedly call the external API.
+
+Important deployment requirement: passive packet capture in Docker is not the same as passive capture on the host LAN. For production collector use, the brain service needs host-network visibility plus packet-capture capabilities. In Compose terms that means:
+
+```yaml
+network_mode: host
+cap_add:
+  - NET_RAW
+  - NET_ADMIN
+```
+
+Without host networking, the collectors still fail soft and the main app continues to run, but the packet capture layer may not see the real LAN traffic you expect.
+
+The Fingerbank API documentation for evidence interrogation is here:
+
+- https://api.fingerbank.org/api_doc/2/combinations/interrogate.html
+
+HomelabSec keeps Fingerbank identity and internal role mapping separate. Fingerbank returns the device identity and score; HomelabSec then maps that identity into your internal role taxonomy via `fingerbank_role_mappings`.
 
 ## Database Migrations
 

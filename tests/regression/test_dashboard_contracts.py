@@ -9,11 +9,17 @@ FRONTEND_INDEX_PATH = Path(__file__).resolve().parents[2] / "frontend" / "index.
 FRONTEND_APP_PATH = Path(__file__).resolve().parents[2] / "frontend" / "app.js"
 FRONTEND_ASSET_PATH = Path(__file__).resolve().parents[2] / "frontend" / "asset.html"
 FRONTEND_ASSET_SCRIPT_PATH = Path(__file__).resolve().parents[2] / "frontend" / "asset.js"
+FRONTEND_LOGIN_PATH = Path(__file__).resolve().parents[2] / "frontend" / "login.html"
+FRONTEND_PROFILE_PATH = Path(__file__).resolve().parents[2] / "frontend" / "profile.html"
+FRONTEND_ADMIN_PATH = Path(__file__).resolve().parents[2] / "frontend" / "admin.html"
 
 
 @pytest.fixture
 def regression_client(integration_brain_module):
-    return TestClient(integration_brain_module.app)
+    client = TestClient(integration_brain_module.app)
+    response = client.post("/auth/login", json={"username": "admin", "password": "change-me-now"})
+    assert response.status_code == 200
+    return client
 
 
 @pytest.fixture
@@ -111,6 +117,8 @@ def test_assets_contract_shape(populated_dashboard_data):
     assert {
         "asset_id",
         "preferred_name",
+        "mac_address",
+        "mac_vendor",
         "role",
         "role_confidence",
         "first_seen",
@@ -168,6 +176,8 @@ def test_admin_status_contract_shape(populated_dashboard_data):
         "api_status",
         "version",
         "summary",
+        "enrichment_modules",
+        "raw_data_sources",
         "latest_scan_run",
         "scheduler_freshness",
     } == set(payload.keys())
@@ -195,12 +205,15 @@ def test_dashboard_markup_exposes_clickable_summary_cards():
     assert 'id="filter-confidence-blue"' in html
     assert 'id="asset-count"' in html
     assert 'id="detail-list"' in html
-    assert 'id="admin-status"' in html
+    assert 'id="profile-menu"' in html
+    assert 'id="page-nav"' in html
     assert "Most notable" in html
     assert 'data-sort-key="last_seen"' in html
+    assert 'data-sort-key="mac_vendor"' in html
     assert "Red" in html
     assert "Green" in html
     assert "Blue" in html
+    assert "Recent changes" not in html
 
 
 def test_dashboard_script_wires_frontend_contracts():
@@ -208,7 +221,7 @@ def test_dashboard_script_wires_frontend_contracts():
 
     assert 'observations: "/api/observations"' in script
     assert 'fingerprints: "/api/fingerprints"' in script
-    assert 'adminStatus: "/api/admin/status"' in script
+    assert 'window.HomelabSecAuth.requireUser()' in script
     assert 'renderSummaryDetail("assets")' in script
     assert 'renderSummaryDetail("observations")' in script
     assert 'renderSummaryDetail("fingerprints")' in script
@@ -221,12 +234,16 @@ def test_dashboard_script_wires_frontend_contracts():
     assert 'dashboardState.assetFilter = "green"' in script
     assert 'dashboardState.assetFilter = "blue"' in script
     assert 'href="/asset.html?id=${encodeURIComponent(asset.asset_id)}"' in script
+    assert '&focus=notable' in script
+    assert '&focus=recent_change' in script
+    assert 'escapeHtml(asset.mac_vendor || "Unknown brand")' in script
     assert 'class="pill confidence-pill ${escapeHtml(confidence.className)}"' in script
     assert 'elements.assetCount.textContent = `${shownCount}/${totalCount}`' in script
-    assert "renderAdminStatus(dashboardState.adminStatus)" in script
     assert 'dashboardState.notableAssetIds = new Set' in script
     assert 'dashboardState.assetFilter = "notable"' in script
     assert "Most notable" in script
+    assert "Recent change" in script
+    assert 'Use the Asset inventory flags to inspect recent changes.' in script
 
 
 def test_asset_detail_markup_and_script_exist():
@@ -234,8 +251,45 @@ def test_asset_detail_markup_and_script_exist():
     script = FRONTEND_ASSET_SCRIPT_PATH.read_text(encoding="utf-8")
 
     assert 'id="rescan-button"' in html
+    assert 'id="lynis-button"' in html
+    assert 'id="lynis-modal"' in html
+    assert 'id="lynis-run-state"' in html
+    assert 'id="asset-lynis-panel"' in html
+    assert 'id="page-nav"' in html
     assert 'id="asset-overview"' in html
+    assert 'id="asset-status-flags"' in html
     assert 'id="asset-services"' in html
     assert 'id="asset-lookup"' in html
+    assert 'id="profile-menu"' in html
+    assert '/auth.js' in html
+    assert 'window.HomelabSecAuth.requireUser()' in script
     assert 'fetchJson(`/api/assets/${assetId}`)' in script
+    assert 'renderStatusFlags(detail)' in script
+    assert 'renderLynisPanel(detail)' in script
+    assert 'focusFromUrl()' in script
+    assert 'id="notable-panel"' in script
+    assert 'id="recent-change-panel"' in script
+    assert 'fetchJson(`/api/assets/${assetId}/lynis`)' in script
+    assert 'fetchJson(`/api/assets/${assetId}/lynis/run`' in script
+    assert 'fetchJson(`/api/assets/${assetId}/lynis_target`' in script
+    assert "scheduleLynisPolling" in script
+    assert 'latestRun.status === "running"' in script
+    assert 'latestRun.status === "pending"' in script
     assert 'fetchJson(`/api/rescan/${assetId}`' in script
+    assert 'MAC brand' in html
+
+
+def test_auth_and_admin_pages_exist():
+    login_html = FRONTEND_LOGIN_PATH.read_text(encoding="utf-8")
+    profile_html = FRONTEND_PROFILE_PATH.read_text(encoding="utf-8")
+    admin_html = FRONTEND_ADMIN_PATH.read_text(encoding="utf-8")
+    admin_script = (Path(__file__).resolve().parents[2] / "frontend" / "admin.js").read_text(encoding="utf-8")
+
+    assert 'id="login-form"' in login_html
+    assert 'id="profile-form"' in profile_html
+    assert 'id="module-list"' in admin_html
+    assert 'id="source-list"' in admin_html
+    assert 'id="user-list"' in admin_html
+    assert 'id="admin-status"' in admin_html
+    assert 'id="page-nav"' in admin_html
+    assert 'apiJson("/api/admin/status")' in admin_script

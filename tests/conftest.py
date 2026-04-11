@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import socket
 import subprocess
 import sys
 import types
@@ -14,7 +15,13 @@ APP_PATH = REPO_ROOT / "brain" / "app.py"
 MIGRATE_PATH = REPO_ROOT / "brain" / "migrate.py"
 BRAIN_DIR = APP_PATH.parent
 TEST_COMPOSE_PATH = REPO_ROOT / "compose" / "compose.test.yaml"
-TEST_DB_PORT = 55432
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        return int(sock.getsockname()[1])
 
 
 def _reset_modules(module_names):
@@ -22,8 +29,16 @@ def _reset_modules(module_names):
         sys.modules.pop(name, None)
 
 
+def _reset_project_modules(extra_names=None):
+    extra_names = extra_names or []
+    for name in list(sys.modules):
+        if name == "app" or name.startswith("brainlib") or name.startswith("collectors"):
+            sys.modules.pop(name, None)
+    _reset_modules(extra_names)
+
+
 def _install_stub_modules():
-    _reset_modules(["psycopg", "requests", "fastapi", "pydantic"])
+    _reset_project_modules(["psycopg", "requests", "fastapi", "pydantic"])
 
     psycopg_stub = types.ModuleType("psycopg")
     psycopg_stub.Connection = object
@@ -44,6 +59,12 @@ def _install_stub_modules():
 
             return decorator
 
+        def on_event(self, *args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
         def get(self, *args, **kwargs):
             def decorator(func):
                 return func
@@ -51,6 +72,18 @@ def _install_stub_modules():
             return decorator
 
         def post(self, *args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
+        def patch(self, *args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
+        def put(self, *args, **kwargs):
             def decorator(func):
                 return func
 
@@ -94,7 +127,7 @@ def _install_stub_modules():
 
 
 def _load_brain_module(module_name: str):
-    _reset_modules([module_name])
+    _reset_project_modules([module_name])
     if str(BRAIN_DIR) not in sys.path:
         sys.path.insert(0, str(BRAIN_DIR))
     os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
@@ -116,14 +149,23 @@ def brain_module():
 
 @pytest.fixture(scope="session")
 def integration_db_url():
-    return f"postgresql://homelabsec:change-me@127.0.0.1:{TEST_DB_PORT}/homelabsec"
+    port = os.environ.get("TEST_DB_PORT")
+    if not port:
+        port = str(_find_free_port())
+        os.environ["TEST_DB_PORT"] = port
+    return f"postgresql://homelabsec:change-me@127.0.0.1:{port}/homelabsec"
 
 
 @pytest.fixture(scope="session")
 def postgres_test_env():
     project_name = f"homelabsec-test-{uuid.uuid4().hex[:8]}"
+    test_db_port = os.environ.get("TEST_DB_PORT")
+    if not test_db_port:
+        test_db_port = str(_find_free_port())
+        os.environ["TEST_DB_PORT"] = test_db_port
     return {
         "project_name": project_name,
+        "env": {**os.environ, "TEST_DB_PORT": test_db_port},
         "compose_path": str(TEST_COMPOSE_PATH),
         "down_cmd": [
             "docker",
@@ -154,14 +196,15 @@ def postgres_test_env():
 def postgres_test_stack(postgres_test_env):
     down_cmd = postgres_test_env["down_cmd"]
     up_cmd = postgres_test_env["up_cmd"]
+    env = postgres_test_env["env"]
 
-    subprocess.run(down_cmd, cwd=REPO_ROOT, check=False, capture_output=True, text=True)
-    subprocess.run(up_cmd, cwd=REPO_ROOT, check=True, capture_output=True, text=True)
+    subprocess.run(down_cmd, cwd=REPO_ROOT, check=False, capture_output=True, text=True, env=env)
+    subprocess.run(up_cmd, cwd=REPO_ROOT, check=True, capture_output=True, text=True, env=env)
 
     try:
         yield
     finally:
-        subprocess.run(down_cmd, cwd=REPO_ROOT, check=False, capture_output=True, text=True)
+        subprocess.run(down_cmd, cwd=REPO_ROOT, check=False, capture_output=True, text=True, env=env)
 
 
 @pytest.fixture(scope="session")

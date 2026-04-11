@@ -31,6 +31,17 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-homelabsec}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-homelabsec}
       OLLAMA_URL: ${OLLAMA_URL:-http://host.containers.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-homelabsec-classifier}
+      FINGERBANK_ENABLED: ${FINGERBANK_ENABLED:-true}
+      FINGERBANK_API_KEY: ${FINGERBANK_API_KEY:-}
+      FINGERBANK_BASE_URL: ${FINGERBANK_BASE_URL:-https://api.fingerbank.org}
+      FINGERBANK_TIMEOUT_SECONDS: ${FINGERBANK_TIMEOUT_SECONDS:-10}
+      FINGERBANK_MIN_SCORE_ACCEPT: ${FINGERBANK_MIN_SCORE_ACCEPT:-51}
+      FINGERBANK_MIN_SCORE_AUTO_ACCEPT: ${FINGERBANK_MIN_SCORE_AUTO_ACCEPT:-76}
+      COLLECTORS_ENABLED: ${COLLECTORS_ENABLED:-true}
+      COLLECTOR_INTERFACE: ${COLLECTOR_INTERFACE:-any}
+      COLLECTOR_DHCP_ENABLED: ${COLLECTOR_DHCP_ENABLED:-true}
+      COLLECTOR_MDNS_ENABLED: ${COLLECTOR_MDNS_ENABLED:-true}
+      COLLECTOR_SSDP_ENABLED: ${COLLECTOR_SSDP_ENABLED:-true}
     extra_hosts:
       - "host.containers.internal:host-gateway"
     volumes:
@@ -102,6 +113,31 @@ services:
       retries: 3
       start_period: 20s
 
+  lynis-runner:
+    build: ../lynis_runner
+    container_name: homelabsec-lynis-runner
+    restart: unless-stopped
+    environment:
+      API_BASE: http://brain:8088
+      LYNIS_POLL_INTERVAL_SECONDS: ${LYNIS_POLL_INTERVAL_SECONDS:-10}
+      LYNIS_SSH_TIMEOUT_SECONDS: ${LYNIS_SSH_TIMEOUT_SECONDS:-30}
+      LYNIS_AUDIT_TIMEOUT_SECONDS: ${LYNIS_AUDIT_TIMEOUT_SECONDS:-1800}
+      LYNIS_REPO_URL: ${LYNIS_REPO_URL:-https://github.com/CISOfy/lynis.git}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      brain:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import requests; requests.get('http://brain:8088/health', timeout=5).raise_for_status()\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
   frontend:
     build: ../frontend
     container_name: homelabsec-frontend
@@ -109,6 +145,8 @@ services:
     depends_on:
       brain:
         condition: service_healthy
+      lynis-runner:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
       interval: 30s

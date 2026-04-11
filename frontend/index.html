@@ -16,14 +16,18 @@
             Read-only dashboard over the current API. No backend behavior changes.
           </p>
         </div>
-        <div class="hero-meta">
-          <div class="meta-card">
-            <span>Status</span>
-            <strong id="health-status">Loading</strong>
-          </div>
-          <div class="meta-card">
-            <span>Report generated</span>
-            <strong id="report-generated">-</strong>
+        <div class="hero-side">
+          <div id="page-nav"></div>
+          <div id="profile-menu"></div>
+          <div class="hero-meta">
+            <div class="meta-card">
+              <span>Status</span>
+              <strong id="health-status">Loading</strong>
+            </div>
+            <div class="meta-card">
+              <span>Report generated</span>
+              <strong id="report-generated">-</strong>
+            </div>
           </div>
         </div>
       </header>
@@ -62,27 +66,11 @@
           <div id="detail-list" class="stack-list"></div>
         </section>
 
-        <section class="panel admin-panel">
-          <div class="section-heading">
-            <h2>Admin status</h2>
-            <p>API health, scheduler freshness, and quick access links.</p>
-          </div>
-          <div id="admin-status" class="stack-list"></div>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h2>Recent changes</h2>
-            <p>Latest detections from the last 24 hours.</p>
-          </div>
-          <div id="recent-changes" class="stack-list"></div>
-        </section>
-
         <section class="panel panel-wide">
           <div class="section-heading">
             <div>
               <h2>Asset inventory</h2>
-              <p>Current assets ordered by last seen, with notable systems tagged inline.</p>
+              <p>Current assets ordered by last seen, with notable systems and recent changes tagged inline.</p>
             </div>
             <div class="inventory-controls">
               <div id="asset-count" class="asset-count">0/0 shown</div>
@@ -100,12 +88,13 @@
               <thead>
                 <tr>
                   <th><button class="sort-button" type="button" data-sort-key="preferred_name">Name</button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="mac_vendor">MAC brand</button></th>
                   <th><button class="sort-button" type="button" data-sort-key="flags">Flags</button></th>
                   <th><button class="sort-button" type="button" data-sort-key="role">Role</button></th>
                   <th><button class="sort-button" type="button" data-sort-key="role_confidence">Confidence</button></th>
                   <th><button class="sort-button" type="button" data-sort-key="first_seen">First seen</button></th>
                   <th><button class="sort-button is-active" type="button" data-sort-key="last_seen">Last seen</button></th>
-                  <th><button class="sort-button" type="button" data-sort-key="asset_id">Asset ID</button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="asset_id">Details</button></th>
                 </tr>
               </thead>
               <tbody id="assets-table"></tbody>
@@ -119,6 +108,7 @@
       <div class="empty-state">No data available.</div>
     </template>
 
+    <script src="/auth.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

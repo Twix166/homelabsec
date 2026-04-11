@@ -14,14 +14,18 @@
           <h1 id="asset-title">Asset detail</h1>
           <p class="lede" id="asset-subtitle">Inspect one asset in depth.</p>
         </div>
-        <div class="hero-meta">
-          <div class="meta-card">
-            <span>Role</span>
-            <strong id="detail-role">Loading</strong>
-          </div>
-          <div class="meta-card">
-            <span>Confidence</span>
-            <strong id="detail-confidence">-</strong>
+        <div class="hero-side">
+          <div id="page-nav"></div>
+          <div id="profile-menu"></div>
+          <div class="hero-meta">
+            <div class="meta-card">
+              <span>Role</span>
+              <strong id="detail-role">Loading</strong>
+            </div>
+            <div class="meta-card">
+              <span>Confidence</span>
+              <strong id="detail-confidence">-</strong>
+            </div>
           </div>
         </div>
       </header>
@@ -32,10 +36,26 @@
             <h2>Overview</h2>
             <div class="inventory-controls">
               <a class="filter-button is-active" href="/">Back to dashboard</a>
+              <button id="lynis-button" class="filter-button" type="button">Lynis audit</button>
               <button id="rescan-button" class="refresh-button" type="button">Rescan host</button>
             </div>
           </div>
+          <p class="lede">Overview includes role, confidence, MAC brand, identifiers, and rescan state.</p>
           <div id="asset-overview" class="stack-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <h2>Status flags</h2>
+          </div>
+          <div id="asset-status-flags" class="stack-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <h2>Lynis</h2>
+          </div>
+          <div id="asset-lynis-panel" class="stack-list"></div>
         </section>
 
         <section class="panel">
@@ -53,9 +73,54 @@
         </section>
       </main>
     </div>
+    <div id="lynis-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <section class="modal-panel">
+        <div class="section-heading">
+          <div>
+            <h2>Lynis audit</h2>
+            <p>Run a host-local Lynis audit over SSH using the Lynis runner microservice.</p>
+          </div>
+          <button id="lynis-close-button" class="filter-button" type="button">Close</button>
+        </div>
+        <div id="lynis-status" class="stack-list"></div>
+        <div id="lynis-run-state" class="empty-state" hidden></div>
+        <form id="lynis-target-form" class="auth-form" hidden>
+          <label>
+            <span>SSH host</span>
+            <input id="lynis-ssh-host" type="text" />
+          </label>
+          <label>
+            <span>SSH port</span>
+            <input id="lynis-ssh-port" type="number" min="1" value="22" />
+          </label>
+          <label>
+            <span>SSH username</span>
+            <input id="lynis-ssh-username" type="text" />
+          </label>
+          <label>
+            <span>SSH password</span>
+            <input id="lynis-ssh-password" type="password" />
+          </label>
+          <label class="checkbox-line">
+            <input id="lynis-use-sudo" type="checkbox" />
+            <span>Use sudo on the target host</span>
+          </label>
+          <label>
+            <span>Notes</span>
+            <input id="lynis-notes" type="text" />
+          </label>
+          <button id="lynis-save-target" class="refresh-button" type="submit">Save target</button>
+        </form>
+        <div class="inventory-controls">
+          <button id="lynis-run-button" class="refresh-button" type="button">Run Lynis audit</button>
+        </div>
+      </section>
+    </div>
     <template id="empty-state-template">
       <div class="empty-state">No data available.</div>
     </template>
+    <script src="/auth.js"></script>
     <script src="/asset.js"></script>
   </body>
 </html>

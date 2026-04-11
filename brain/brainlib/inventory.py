@@ -4,19 +4,104 @@ from typing import Any
 
 import psycopg
 
+from brainlib.admin_console import is_module_enabled
 from brainlib.classification import get_classification_lookup_entry
 from brainlib.config import FINGERPRINTS_LIST_LIMIT, OBSERVATIONS_LIST_LIMIT
 from brainlib.errors import not_found
 from brainlib.fingerprints import get_latest_fingerprint
+from brainlib.lynis import latest_lynis_run, lynis_target_for_asset
+from brainlib.mac_vendors import normalize_mac_vendor, resolved_mac_vendor
 from brainlib.rescan import latest_rescan_request
 
 
-def list_assets(conn: psycopg.Connection) -> dict[str, list[dict[str, Any]]]:
+def _notable_assessment(role: str | None, role_confidence: float | None) -> dict[str, Any]:
+    reasons: list[str] = []
+    if role is None or role == "unknown":
+        reasons.append("Role is unknown or not yet classified.")
+    if role_confidence is None:
+        reasons.append("Confidence has not been scored yet.")
+    elif role_confidence < 0.60:
+        reasons.append(f"Confidence is below the notable threshold at {round(role_confidence * 100)}%.")
+
+    is_notable = bool(reasons)
+    if not is_notable:
+        reasons.append("Classification is specific enough that this asset is not currently flagged as notable.")
+
+    return {
+        "is_notable": is_notable,
+        "summary": reasons[0],
+        "reasons": reasons,
+        "next_step": (
+            "Improve classification certainty by rescanning, validating exposed services, or running deeper host enrichment."
+            if is_notable
+            else "No immediate action is required unless the asset changes or new evidence appears."
+        ),
+    }
+
+
+def _latest_recent_change(conn: psycopg.Connection, asset_id: str) -> dict[str, Any] | None:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT asset_id, preferred_name, role, role_confidence, first_seen, last_seen
-            FROM assets
+            SELECT change_id, change_type, severity, confidence, old_value, new_value, detected_at
+            FROM changes
+            WHERE asset_id = %s
+              AND detected_at >= now() - interval '1 day'
+            ORDER BY detected_at DESC, change_id DESC
+            LIMIT 1
+            """,
+            (asset_id,),
+        )
+        row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    old_value = row[4]
+    new_value = row[5]
+    if old_value and new_value:
+        summary = f"{row[1]} changed from {old_value} to {new_value}."
+    elif new_value:
+        summary = f"{row[1]} changed to {new_value}."
+    elif old_value:
+        summary = f"{row[1]} changed from {old_value}."
+    else:
+        summary = f"{row[1]} was detected in the last 24 hours."
+
+    return {
+        "change_id": str(row[0]),
+        "change_type": row[1],
+        "severity": row[2],
+        "confidence": float(row[3]) if row[3] is not None else None,
+        "old_value": old_value,
+        "new_value": new_value,
+        "detected_at": row[6].isoformat(),
+        "summary": summary,
+    }
+
+
+def list_assets(conn: psycopg.Connection) -> dict[str, list[dict[str, Any]]]:
+    mac_lookup_enabled = is_module_enabled(conn, "mac_vendor_lookup")
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                a.asset_id,
+                a.preferred_name,
+                a.role,
+                a.role_confidence,
+                a.first_seen,
+                a.last_seen,
+                o.mac_address,
+                o.mac_vendor
+            FROM assets a
+            LEFT JOIN LATERAL (
+                SELECT mac_address, mac_vendor
+                FROM network_observations
+                WHERE asset_id = a.asset_id
+                ORDER BY observed_at DESC, observation_id DESC
+                LIMIT 1
+            ) o ON TRUE
             ORDER BY last_seen DESC
             """
         )
@@ -31,6 +116,12 @@ def list_assets(conn: psycopg.Connection) -> dict[str, list[dict[str, Any]]]:
                 "role_confidence": float(r[3]) if r[3] is not None else None,
                 "first_seen": r[4].isoformat(),
                 "last_seen": r[5].isoformat(),
+                "mac_address": str(r[6]) if r[6] is not None else None,
+                "mac_vendor": (
+                    resolved_mac_vendor(str(r[6]) if r[6] is not None else None, r[7])
+                    if mac_lookup_enabled
+                    else normalize_mac_vendor(r[7])
+                ),
             }
             for r in rows
         ]
@@ -133,11 +224,27 @@ def fingerprint_detail(conn: psycopg.Connection, asset_id: str) -> dict[str, Any
 
 
 def asset_detail(conn: psycopg.Connection, asset_id: str) -> dict[str, Any]:
+    mac_lookup_enabled = is_module_enabled(conn, "mac_vendor_lookup")
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT asset_id, preferred_name, role, role_confidence, first_seen, last_seen
-            FROM assets
+            SELECT
+                a.asset_id,
+                a.preferred_name,
+                a.role,
+                a.role_confidence,
+                a.first_seen,
+                a.last_seen,
+                o.mac_address,
+                o.mac_vendor
+            FROM assets a
+            LEFT JOIN LATERAL (
+                SELECT mac_address, mac_vendor
+                FROM network_observations
+                WHERE asset_id = a.asset_id
+                ORDER BY observed_at DESC, observation_id DESC
+                LIMIT 1
+            ) o ON TRUE
             WHERE asset_id = %s
             """,
             (asset_id,),
@@ -199,19 +306,30 @@ def asset_detail(conn: psycopg.Connection, asset_id: str) -> dict[str, Any]:
 
     latest = get_latest_fingerprint(conn, asset_id)
     learned_lookup = get_classification_lookup_entry(conn, latest["fingerprint"]) if latest else None
+    role_confidence = float(asset[3]) if asset[3] is not None else None
 
     return {
         "asset": {
             "asset_id": str(asset[0]),
             "preferred_name": asset[1],
             "role": asset[2],
-            "role_confidence": float(asset[3]) if asset[3] is not None else None,
+            "role_confidence": role_confidence,
             "first_seen": asset[4].isoformat(),
             "last_seen": asset[5].isoformat(),
+            "mac_address": str(asset[6]) if asset[6] is not None else None,
+            "mac_vendor": (
+                resolved_mac_vendor(str(asset[6]) if asset[6] is not None else None, asset[7])
+                if mac_lookup_enabled
+                else normalize_mac_vendor(asset[7])
+            ),
         },
         "identifiers": identifiers,
         "exposed_services": exposed_services,
         "fingerprint": latest,
         "learned_lookup": learned_lookup,
+        "recent_change": _latest_recent_change(conn, asset_id),
+        "notable_assessment": _notable_assessment(asset[2], role_confidence),
         "latest_rescan_request": latest_rescan_request(conn, asset_id),
+        "lynis_target": lynis_target_for_asset(conn, asset_id),
+        "latest_lynis_run": latest_lynis_run(conn, asset_id),
     }

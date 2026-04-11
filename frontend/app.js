@@ -23,8 +23,6 @@ const elements = {
   detailDescription: document.getElementById("detail-description"),
   detailList: document.getElementById("detail-list"),
   assetCount: document.getElementById("asset-count"),
-  adminStatus: document.getElementById("admin-status"),
-  recentChanges: document.getElementById("recent-changes"),
   assetsTable: document.getElementById("assets-table"),
   filterAssetsAll: document.getElementById("filter-assets-all"),
   filterAssetsNotable: document.getElementById("filter-assets-notable"),
@@ -42,7 +40,8 @@ const dashboardState = {
   fingerprints: [],
   changes: [],
   notableAssetIds: new Set(),
-  adminStatus: null,
+  notableReasonsByAssetId: new Map(),
+  recentChangeByAssetId: new Map(),
   activeSummary: "changes",
   assetFilter: "all",
   assetSortKey: "last_seen",
@@ -126,6 +125,35 @@ function confidenceTooltip(value) {
   return `${band.label} confidence (${score}). ${band.summary} ${band.nextStep}`;
 }
 
+function notableReason(asset) {
+  const reasons = [];
+  if (!asset.role || asset.role === "unknown") {
+    reasons.push("Role is unknown or not yet classified.");
+  }
+  if (typeof asset.role_confidence !== "number") {
+    reasons.push("Confidence has not been scored yet.");
+  } else if (asset.role_confidence < 0.6) {
+    reasons.push(`Confidence is below the notable threshold at ${formatConfidence(asset.role_confidence)}.`);
+  }
+  return reasons[0] || "This asset is tracked closely because it needs additional classification review.";
+}
+
+function describeChange(change) {
+  if (!change) {
+    return "";
+  }
+  if (change.old_value && change.new_value) {
+    return `${change.change_type} changed from ${change.old_value} to ${change.new_value}.`;
+  }
+  if (change.new_value) {
+    return `${change.change_type} changed to ${change.new_value}.`;
+  }
+  if (change.old_value) {
+    return `${change.change_type} changed from ${change.old_value}.`;
+  }
+  return `${change.change_type} was detected at ${formatDate(change.detected_at)}.`;
+}
+
 function setEmptyState(container, message) {
   container.innerHTML = "";
   const node = elements.emptyTemplate.content.firstElementChild.cloneNode(true);
@@ -154,7 +182,9 @@ function filterAssets(assets) {
 
 function sortValue(asset, sortKey) {
   if (sortKey === "flags") {
-    return dashboardState.notableAssetIds.has(asset.asset_id) ? 1 : 0;
+    const notableScore = dashboardState.notableAssetIds.has(asset.asset_id) ? 2 : 0;
+    const recentChangeScore = dashboardState.recentChangeByAssetId.has(asset.asset_id) ? 1 : 0;
+    return notableScore + recentChangeScore;
   }
 
   if (sortKey === "role_confidence") {
@@ -187,42 +217,30 @@ function sortedAssets(assets) {
   });
 }
 
-function renderRecentChanges(changes) {
-  if (!changes.length) {
-    setEmptyState(elements.recentChanges, "No recent changes in the last 24 hours.");
-    return;
-  }
-
-  elements.recentChanges.innerHTML = changes
-    .slice(0, 8)
-    .map(
-      (change) => `
-        <article class="list-card">
-          <div class="list-topline">
-            <div class="list-title">${escapeHtml(change.preferred_name || "Unnamed asset")}</div>
-            <span class="pill ${severityClass(change.severity)}">${escapeHtml(change.severity || "info")}</span>
-          </div>
-          <div class="list-meta">
-            <span>${escapeHtml(change.change_type || "unknown_change")}</span>
-            <span>${escapeHtml(change.role || "unknown")}</span>
-            <span>${escapeHtml(formatDate(change.detected_at))}</span>
-          </div>
-        </article>
-      `
-    )
-    .join("");
-}
-
 function assetInventoryRows() {
   const assets = sortedAssets(filterAssets(dashboardState.assets));
 
   return assets.map((asset) => {
     const isNotable = dashboardState.notableAssetIds.has(asset.asset_id);
+    const recentChange = dashboardState.recentChangeByAssetId.get(asset.asset_id);
     const confidence = confidenceBand(asset.role_confidence);
+    const flagPills = [];
+    if (isNotable) {
+      flagPills.push(
+        `<a class="pill notable pill-link" href="/asset.html?id=${encodeURIComponent(asset.asset_id)}&focus=notable" title="${escapeHtml(dashboardState.notableReasonsByAssetId.get(asset.asset_id) || notableReason(asset))}" aria-label="${escapeHtml(dashboardState.notableReasonsByAssetId.get(asset.asset_id) || notableReason(asset))}">Most notable</a>`
+      );
+    }
+    if (recentChange) {
+      const recentChangeTooltip = `${describeChange(recentChange)} Detected ${formatDate(recentChange.detected_at)}.`;
+      flagPills.push(
+        `<a class="pill recent-change pill-link" href="/asset.html?id=${encodeURIComponent(asset.asset_id)}&focus=recent_change" title="${escapeHtml(recentChangeTooltip)}" aria-label="${escapeHtml(recentChangeTooltip)}">Recent change</a>`
+      );
+    }
     return `
       <tr>
         <td><span class="asset-name">${escapeHtml(asset.preferred_name || "Unnamed asset")}</span></td>
-        <td>${isNotable ? '<span class="pill notable">Most notable</span>' : '<span class="muted-cell">-</span>'}</td>
+        <td>${escapeHtml(asset.mac_vendor || "Unknown brand")}</td>
+        <td>${flagPills.length ? flagPills.join(" ") : '<span class="muted-cell">-</span>'}</td>
         <td>${escapeHtml(asset.role || "unknown")}</td>
         <td>
           <span
@@ -245,7 +263,7 @@ function renderAssetsTable() {
   const rows = assetInventoryRows();
   const shownCount = rows.length;
   const totalCount = dashboardState.assets.length;
-  const colSpan = 7;
+  const colSpan = 8;
   elements.assetCount.textContent = `${shownCount}/${totalCount}`;
   if (!rows.length) {
     const message =
@@ -281,107 +299,6 @@ function updateSortButtons() {
   }
 }
 
-function buildQuickLinks() {
-  const { protocol, hostname, origin } = window.location;
-  const links = [
-    { label: "Dashboard", href: origin },
-    { label: "API health", href: `${protocol}//${hostname}:8088/health` },
-    { label: "Prometheus", href: "http://127.0.0.1:9090" },
-    { label: "Grafana", href: "http://127.0.0.1:3001" },
-    { label: "Alertmanager", href: "http://127.0.0.1:9093" },
-  ];
-
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    links.push({ label: "Secure edge", href: "https://localhost:18443" });
-  }
-
-  return links;
-}
-
-function renderAdminStatus(status) {
-  if (!status) {
-    setEmptyState(elements.adminStatus, "Admin status unavailable.");
-    return;
-  }
-
-  const freshness = status.scheduler_freshness || {};
-  const summary = status.summary || {};
-  const latestScan = status.latest_scan_run;
-  const quickLinks = buildQuickLinks()
-    .map(
-      (link) => `
-        <a class="pill" href="${escapeHtml(link.href)}" target="_blank" rel="noreferrer">${escapeHtml(link.label)}</a>
-      `
-    )
-    .join("");
-
-  elements.adminStatus.innerHTML = `
-    <article class="list-card admin-card">
-      <div class="admin-header">
-        <div>
-          <div class="admin-eyebrow">Control plane</div>
-          <div class="list-title">API status</div>
-        </div>
-        <span class="pill status-pill ${freshness.status === "stale" ? "high" : "low"}">${escapeHtml(status.api_status || "unknown")}</span>
-      </div>
-      <div class="admin-grid">
-        <div class="admin-metric">
-          <span class="admin-label">Generated</span>
-          <strong class="admin-value">${escapeHtml(formatDate(status.generated_at))}</strong>
-        </div>
-        <div class="admin-metric">
-          <span class="admin-label">Scheduler</span>
-          <strong class="admin-value">${escapeHtml(freshness.status || "unknown")}</strong>
-        </div>
-        <div class="admin-metric">
-          <span class="admin-label">Stale after</span>
-          <strong class="admin-value">${escapeHtml(freshness.stale_after_minutes ?? "-")} min</strong>
-        </div>
-        <div class="admin-metric">
-          <span class="admin-label">Scan age</span>
-          <strong class="admin-value">${escapeHtml(freshness.age_minutes ?? "-")} min</strong>
-        </div>
-      </div>
-      <div class="admin-grid admin-grid-compact">
-        <div class="admin-metric compact">
-          <span class="admin-label">Assets</span>
-          <strong class="admin-value">${escapeHtml(summary.assets ?? 0)}</strong>
-        </div>
-        <div class="admin-metric compact">
-          <span class="admin-label">Observations</span>
-          <strong class="admin-value">${escapeHtml(summary.network_observations ?? 0)}</strong>
-        </div>
-        <div class="admin-metric compact">
-          <span class="admin-label">Fingerprints</span>
-          <strong class="admin-value">${escapeHtml(summary.fingerprints ?? 0)}</strong>
-        </div>
-      </div>
-      ${
-        latestScan
-          ? `
-            <div class="admin-scan">
-              <div class="admin-scan-title">Latest scan</div>
-              <div class="list-meta">
-                <span>${escapeHtml(latestScan.scan_type || "scan")}</span>
-                <span>${escapeHtml(latestScan.status || "unknown")}</span>
-                <span>${escapeHtml(formatDate(latestScan.completed_at || latestScan.started_at))}</span>
-              </div>
-              <div class="list-meta mono">
-                <span>${escapeHtml(latestScan.scan_run_id)}</span>
-              </div>
-            </div>
-          `
-          : `
-            <div class="empty-state">No scan runs recorded yet.</div>
-          `
-      }
-      <div class="admin-links">
-        ${quickLinks}
-      </div>
-    </article>
-  `;
-}
-
 function renderDetailCards(items, renderItem, emptyMessage) {
   if (!items.length) {
     setEmptyState(elements.detailList, emptyMessage);
@@ -398,6 +315,20 @@ function renderSummaryDetail(summaryKey) {
     dashboardState.assetFilter = "all";
     updateAssetFilterButtons();
     renderAssetsTable();
+    window.scrollTo({
+      top: elements.assetsTable.closest(".panel").offsetTop - 24,
+      behavior: "smooth",
+    });
+    return;
+  }
+
+  if (summaryKey === "changes") {
+    dashboardState.assetFilter = "all";
+    updateAssetFilterButtons();
+    renderAssetsTable();
+    elements.detailTitle.textContent = "Recent changes";
+    elements.detailDescription.textContent = "Recent changes now appear inline in the Asset inventory flags column. Click a Recent change pill to open the affected asset.";
+    setEmptyState(elements.detailList, "Use the Asset inventory flags to inspect recent changes.");
     window.scrollTo({
       top: elements.assetsTable.closest(".panel").offsetTop - 24,
       behavior: "smooth",
@@ -457,36 +388,10 @@ function renderSummaryDetail(summaryKey) {
     return;
   }
 
-  elements.detailTitle.textContent = "24h changes";
-  elements.detailDescription.textContent = "Detected changes from the last 24 hours.";
-  renderDetailCards(
-    dashboardState.changes,
-    (change) => `
-      <article class="list-card">
-        <div class="list-topline">
-          <div class="list-title">${escapeHtml(change.preferred_name || "Unnamed asset")}</div>
-          <span class="pill ${severityClass(change.severity)}">${escapeHtml(change.severity || "info")}</span>
-        </div>
-        <div class="list-meta">
-          <span>${escapeHtml(change.change_type || "unknown_change")}</span>
-          <span>${escapeHtml(change.role || "unknown")}</span>
-          <span>${escapeHtml(formatDate(change.detected_at))}</span>
-        </div>
-        <div class="list-meta mono">
-          <span>${escapeHtml(change.asset_id)}</span>
-        </div>
-      </article>
-    `,
-    "No recent changes in the last 24 hours."
-  );
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
-  }
-  return response.json();
+  return window.HomelabSecAuth.apiJson(url);
 }
 
 async function loadDashboard() {
@@ -494,14 +399,13 @@ async function loadDashboard() {
   elements.refreshButton.textContent = "Refreshing";
 
   try {
-    const [health, summary, daily, assets, observations, fingerprints, adminStatus] = await Promise.all([
+    const [health, summary, daily, assets, observations, fingerprints] = await Promise.all([
       fetchJson(endpoints.health),
       fetchJson(endpoints.summary),
       fetchJson(endpoints.daily),
       fetchJson(endpoints.assets),
       fetchJson(endpoints.observations),
       fetchJson(endpoints.fingerprints),
-      fetchJson(endpoints.adminStatus),
     ]);
 
     dashboardState.assets = assets.assets || [];
@@ -509,8 +413,12 @@ async function loadDashboard() {
     dashboardState.fingerprints = fingerprints.fingerprints || [];
     dashboardState.changes = daily.recent_changes || [];
     dashboardState.notableAssetIds = new Set((daily.notable_assets || []).map((asset) => asset.asset_id));
-    dashboardState.adminStatus = adminStatus;
-
+    dashboardState.notableReasonsByAssetId = new Map(
+      (daily.notable_assets || []).map((asset) => [asset.asset_id, notableReason(asset)])
+    );
+    dashboardState.recentChangeByAssetId = new Map(
+      (daily.recent_changes || []).map((change) => [change.asset_id, change])
+    );
     elements.healthStatus.textContent = health.status || "ok";
     elements.reportGenerated.textContent = formatDate(daily.report_generated_at);
     elements.statAssets.textContent = summary.assets ?? "-";
@@ -518,11 +426,9 @@ async function loadDashboard() {
     elements.statFingerprints.textContent = summary.fingerprints ?? "-";
     elements.statChanges.textContent = daily.recent_change_count ?? "-";
 
-    renderRecentChanges(dashboardState.changes);
     updateAssetFilterButtons();
     updateSortButtons();
     renderAssetsTable();
-    renderAdminStatus(dashboardState.adminStatus);
     renderSummaryDetail(dashboardState.activeSummary);
   } catch (error) {
     elements.healthStatus.textContent = "error";
@@ -608,4 +514,17 @@ for (const button of elements.sortButtons) {
   });
 }
 
-loadDashboard();
+async function initDashboard() {
+  const user = await window.HomelabSecAuth.requireUser();
+  window.HomelabSecAuth.mountHeaderNav(document.getElementById("page-nav"), user, "dashboard");
+  window.HomelabSecAuth.mountProfileMenu(document.getElementById("profile-menu"), user);
+  await loadDashboard();
+}
+
+initDashboard().catch((error) => {
+  elements.healthStatus.textContent = "error";
+  elements.reportGenerated.textContent = "-";
+  setEmptyState(elements.detailList, `Failed to load dashboard: ${error.message}`);
+  setEmptyState(elements.adminStatus, `Failed to load admin status: ${error.message}`);
+  setEmptyState(elements.recentChanges, `Failed to load dashboard: ${error.message}`);
+});

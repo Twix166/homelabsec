@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: homelabsec
       POSTGRES_PASSWORD: change-me
     ports:
-      - "55432:5432"
+      - "${TEST_DB_PORT:-55432}:5432"
     volumes:
       - test-pgdata:/var/lib/postgresql/data
       - ../brain/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
