@@ -68,9 +68,10 @@ Status:
 - An optional monitoring overlay now exists for Prometheus and Grafana.
 - `brain` now exposes Prometheus-style API metrics.
 - The monitoring overlay now includes a provisioned Grafana dashboard and Prometheus alert rules for core API and scheduler health.
+- Alertmanager routing exists and can now be validated end-to-end with a disposable webhook delivery probe.
 
 - An optional OIDC-based stronger-auth overlay now exists for exposed deployments.
-- Add notification routing, such as Alertmanager, if alerts need to reach operators automatically.
+- Add real operator notification endpoints after choosing the preferred receiver channel.
 
 ## Priority 6: Testing and Verification
 

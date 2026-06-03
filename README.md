@@ -661,6 +661,7 @@ PROMETHEUS_HOST_PORT=9090
 ALERTMANAGER_HOST_PORT=9093
 ALERTMANAGER_DEFAULT_RECEIVER=null
 ALERTMANAGER_WEBHOOK_URL=
+ALERTMANAGER_VALIDATION_WEBHOOK_URL=
 ALERTMANAGER_EMAIL_TO=
 ALERTMANAGER_EMAIL_FROM=
 ALERTMANAGER_SMARTHOST=
@@ -702,6 +703,30 @@ ALERTMANAGER_SMTP_REQUIRE_TLS=true
 ```
 
 The default `null` receiver keeps the overlay safe to start even before notification settings are configured. The `HomelabSecWatchdog` alert exists so routing can be validated once a real receiver is configured.
+
+Validate webhook delivery with a disposable receiver:
+
+```bash
+# 1. Point Alertmanager's validation-only route at the temporary receiver.
+export ALERTMANAGER_VALIDATION_WEBHOOK_URL=http://host.containers.internal:19094/homelabsec-alert-validation
+cd compose
+ALERTMANAGER_VALIDATION_WEBHOOK_URL="$ALERTMANAGER_VALIDATION_WEBHOOK_URL" \
+  docker compose -f compose.yaml -f compose.monitoring.yaml up -d --build alertmanager prometheus
+cd ..
+
+# 2. Start the temporary receiver and inject a synthetic validation alert.
+python3 scripts/validate_alert_delivery.py \
+  --alertmanager-url http://127.0.0.1:9093 \
+  --listen-port 19094
+```
+
+The validation script starts a temporary local webhook, posts a synthetic `HomelabSecDeliveryValidation` alert to Alertmanager, and waits for Alertmanager to call the temporary webhook back through the validation-only Alertmanager route. A successful run proves the alert path is delivering beyond Prometheus rule evaluation and into an outbound Alertmanager receiver path.
+
+For machine-readable automation:
+
+```bash
+python3 scripts/validate_alert_delivery.py --alertmanager-url http://127.0.0.1:9093 --listen-port 19094 --json
+```
 
 Useful operational commands:
 

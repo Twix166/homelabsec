@@ -24,6 +24,28 @@ def _reload_brainlib_module(module_name: str, monkeypatch):
     return importlib.import_module(module_name)
 
 
+def test_alertmanager_entrypoint_adds_disposable_validation_receiver_when_configured():
+    result = subprocess.run(
+        ["/bin/sh", str(REPO_ROOT / "monitoring" / "alertmanager" / "docker-entrypoint.sh")],
+        cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "ALERTMANAGER_CONFIG_PATH": str(REPO_ROOT / ".pytest-alertmanager.yml"),
+            "ALERTMANAGER_PRINT_CONFIG": "1",
+            "ALERTMANAGER_DEFAULT_RECEIVER": "null",
+            "ALERTMANAGER_VALIDATION_WEBHOOK_URL": "http://host.containers.internal:19094/homelabsec-alert-validation",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "receiver: \"delivery-validation\"" in result.stdout
+    assert "alertname: \"HomelabSecDeliveryValidation\"" in result.stdout
+    assert "http://host.containers.internal:19094/homelabsec-alert-validation" in result.stdout
+
+
 class CookieRecorder:
     def __init__(self):
         self.cookies = []

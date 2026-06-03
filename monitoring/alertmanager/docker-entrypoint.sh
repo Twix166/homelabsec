@@ -1,10 +1,11 @@
 #!/bin/sh
 set -eu
 
-CONFIG_PATH="/etc/alertmanager/alertmanager.yml"
+CONFIG_PATH="${ALERTMANAGER_CONFIG_PATH:-/etc/alertmanager/alertmanager.yml}"
 DEFAULT_RECEIVER="${ALERTMANAGER_DEFAULT_RECEIVER:-null}"
+VALIDATION_WEBHOOK_URL="${ALERTMANAGER_VALIDATION_WEBHOOK_URL:-}"
 
-mkdir -p /etc/alertmanager
+mkdir -p "$(dirname "$CONFIG_PATH")"
 
 case "$DEFAULT_RECEIVER" in
   null)
@@ -48,6 +49,23 @@ global:
     ;;
 esac
 
+VALIDATION_ROUTE=''
+VALIDATION_RECEIVER=''
+if [ -n "$VALIDATION_WEBHOOK_URL" ]; then
+  VALIDATION_ROUTE='
+  routes:
+    - receiver: "delivery-validation"
+      matchers:
+        - alertname: "HomelabSecDeliveryValidation"
+'
+  VALIDATION_RECEIVER="
+  - name: \"delivery-validation\"
+    webhook_configs:
+      - url: \"${VALIDATION_WEBHOOK_URL}\"
+        send_resolved: true
+"
+fi
+
 cat > "$CONFIG_PATH" <<EOF
 ${GLOBAL_BLOCK}
 route:
@@ -56,11 +74,17 @@ route:
   group_wait: 10s
   group_interval: 30s
   repeat_interval: 4h
+${VALIDATION_ROUTE}
 
-receivers:${RECEIVER_BLOCKS}
+receivers:${RECEIVER_BLOCKS}${VALIDATION_RECEIVER}
 
 templates: []
 EOF
+
+if [ "${ALERTMANAGER_PRINT_CONFIG:-}" = "1" ]; then
+  cat "$CONFIG_PATH"
+  exit 0
+fi
 
 exec /bin/alertmanager \
   --config.file="$CONFIG_PATH" \
