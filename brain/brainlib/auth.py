@@ -13,6 +13,7 @@ from fastapi import Request, Response
 
 from brainlib.admin_console import ensure_admin_console_defaults
 from brainlib.config import (
+    AUTH_SECURE_COOKIES,
     AUTH_SESSION_DAYS,
     DEFAULT_ADMIN_DISPLAY_NAME,
     DEFAULT_ADMIN_PASSWORD,
@@ -155,7 +156,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
         max_age=max_age,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=AUTH_SECURE_COOKIES,
         path="/",
     )
 

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import socket
 import ssl
 import subprocess
@@ -7,6 +8,12 @@ import time
 import uuid
 import urllib.request
 from pathlib import Path
+
+import pytest
+
+
+if shutil.which("docker") is None:
+    pytest.skip("Docker is required for compose smoke tests", allow_module_level=True)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

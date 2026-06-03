@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -194,6 +195,8 @@ def postgres_test_env():
 
 @pytest.fixture(scope="session")
 def postgres_test_stack(postgres_test_env):
+    if shutil.which("docker") is None:
+        pytest.skip("Docker is required for integration and backup/restore tests")
     down_cmd = postgres_test_env["down_cmd"]
     up_cmd = postgres_test_env["up_cmd"]
     env = postgres_test_env["env"]

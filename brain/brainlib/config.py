@@ -177,6 +177,7 @@ class BrainConfig:
     log_level: str
     admin_stale_scan_minutes: int
     auth_session_days: int
+    auth_secure_cookies: bool
     default_admin_username: str
     default_admin_password: str
     default_admin_display_name: str
@@ -268,6 +269,7 @@ def load_brain_config(environ: Mapping[str, str] | None = None) -> BrainConfig:
             environ=environ,
             minimum=1,
         ),
+        auth_secure_cookies=env_bool("AUTH_SECURE_COOKIES", False, environ=environ),
         default_admin_username=env_str(
             "DEFAULT_ADMIN_USERNAME",
             "admin",
@@ -327,6 +329,7 @@ CLASSIFICATION_FALLBACK_CONFIDENCE = CONFIG.classification_fallback_confidence
 LOG_LEVEL = CONFIG.log_level
 ADMIN_STALE_SCAN_MINUTES = CONFIG.admin_stale_scan_minutes
 AUTH_SESSION_DAYS = CONFIG.auth_session_days
+AUTH_SECURE_COOKIES = CONFIG.auth_secure_cookies
 DEFAULT_ADMIN_USERNAME = CONFIG.default_admin_username
 DEFAULT_ADMIN_PASSWORD = CONFIG.default_admin_password
 DEFAULT_ADMIN_DISPLAY_NAME = CONFIG.default_admin_display_name
