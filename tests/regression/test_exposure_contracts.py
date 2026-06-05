@@ -224,9 +224,16 @@ def test_exposure_collectors_persist_secret_safe_records(regression_client, inte
         upsert_exposure_launcher_links(conn, launcher_links)
         conn.commit()
 
-    route = regression_client.get("/exposure/routes").json()["routes"][0]
-    dns = regression_client.get("/exposure/dns").json()["dns_records"][0]
-    link = regression_client.get("/exposure/launcher-links").json()["launcher_links"][0]
+    routes = regression_client.get("/exposure/routes").json()["routes"]
+    dns_records = regression_client.get("/exposure/dns").json()["dns_records"]
+    links = regression_client.get("/exposure/launcher-links").json()["launcher_links"]
+    route = next(item for item in routes if item["source"] == "npm" and item["domain"] == "service.home.example")
+    dns = next(
+        item
+        for item in dns_records
+        if item["resolver"] == "synology-lan" and item["hostname"] == "service.home.example"
+    )
+    link = next(item for item in links if item["source"] == "heimdall" and item["title"] == "Service")
     combined = str({"route": route, "dns": dns, "link": link})
 
     assert route["domain"] == "service.home.example"

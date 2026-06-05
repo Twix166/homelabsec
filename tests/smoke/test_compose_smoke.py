@@ -24,6 +24,14 @@ SMOKE_WORKFLOW_COMPOSE = REPO_ROOT / "compose" / "compose.smoke.workflow.yaml"
 FIXTURE_PATH = REPO_ROOT / "tests" / "fixtures" / "nmap_single_host.xml"
 
 
+def _ensure_discovery_raw_dir() -> Path:
+    """Pre-create bind-mounted discovery dirs before Docker can create them as root."""
+
+    smoke_fixture_dir = REPO_ROOT / "discovery" / "raw"
+    smoke_fixture_dir.mkdir(parents=True, exist_ok=True)
+    return smoke_fixture_dir
+
+
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -103,6 +111,7 @@ def _wait_for_services_healthy(project_name: str, env, timeout_seconds: int = 18
 
 def test_compose_stack_reaches_healthy_state():
     project_name = f"homelabsec-smoke-{uuid.uuid4().hex[:8]}"
+    _ensure_discovery_raw_dir()
     api_port = _find_free_port()
     frontend_port = _find_free_port()
     postgres_port = _find_free_port()
@@ -146,6 +155,7 @@ def test_compose_stack_reaches_healthy_state():
 
 def test_monitoring_and_secure_edge_overlays_reach_healthy_state():
     project_name = f"homelabsec-smoke-obs-{uuid.uuid4().hex[:8]}"
+    _ensure_discovery_raw_dir()
     api_port = _find_free_port()
     postgres_port = _find_free_port()
     prometheus_port = _find_free_port()
@@ -227,8 +237,7 @@ def test_api_workflow_smoke():
     frontend_port = _find_free_port()
     postgres_port = _find_free_port()
     compose_files = [SMOKE_COMPOSE, SMOKE_WORKFLOW_COMPOSE]
-    smoke_fixture_dir = REPO_ROOT / "discovery" / "raw"
-    smoke_fixture_dir.mkdir(parents=True, exist_ok=True)
+    smoke_fixture_dir = _ensure_discovery_raw_dir()
     smoke_fixture_path = smoke_fixture_dir / f"smoke-{uuid.uuid4().hex}.xml"
     smoke_fixture_path.write_text(FIXTURE_PATH.read_text())
     compose_env = {
