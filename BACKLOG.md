@@ -178,7 +178,7 @@ Next priority:
 
 ### Slice 11: Exposure Map Dashboard
 Priority: `P0`
-Status: `proposed`
+Status: `in progress`
 
 Goal:
 - Turn HomelabSec into an operator-facing exposure map by correlating Nmap observations with HCM targets/certificates, NPM routes, Heimdall launcher links, and DNS answers.
@@ -194,10 +194,16 @@ Deliver:
 - add DNS alignment checks that distinguish candidate records from production failures
 - add dashboard cards/tables for control-plane risk, raw service exposure, TLS status, unknown services, and accepted findings
 
-Verification:
-- unit tests for route classifiers and finding severity rules
-- fixture-based integration test joining Nmap, HCM, NPM, Heimdall, and DNS payloads
-- dashboard contract tests for the new exposure endpoints
+Delivered so far:
+- Added migration-backed exposure tables for routes, DNS records, launcher links, and exposure findings.
+- Added authenticated read-only API skeletons for `/exposure/summary`, `/exposure/routes`, `/exposure/dns`, `/exposure/launcher-links`, and `/exposure/findings`.
+- Added a dashboard exposure-map panel and frontend/API contract tests.
+
+Remaining:
+- Add unit tests for route classifiers and finding severity rules once collectors/classifiers are introduced.
+- Add fixture-based integration tests joining Nmap, HCM, NPM, Heimdall, and DNS payloads.
+- Add secret-safe HCM, NPM, Heimdall, and DNS collectors.
+- Add dashboard tables/cards for correlated control-plane risk, raw service exposure, TLS status, unknown services, and accepted findings.
 
 ### Slice 12: Sandfly Security Finding Integration
 Priority: `P2`
