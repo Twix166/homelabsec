@@ -61,6 +61,34 @@
         <section class="panel panel-wide">
           <div class="section-heading">
             <div>
+              <h2>Exposure map</h2>
+              <p>Read-only route, DNS, launcher, and exposure-finding contracts for the next control-plane correlation slice.</p>
+            </div>
+            <div id="exposure-summary" class="exposure-summary"></div>
+          </div>
+          <div class="exposure-grid">
+            <div>
+              <h3>Routes</h3>
+              <div id="exposure-routes" class="stack-list compact-list"></div>
+            </div>
+            <div>
+              <h3>DNS</h3>
+              <div id="exposure-dns" class="stack-list compact-list"></div>
+            </div>
+            <div>
+              <h3>Launcher links</h3>
+              <div id="exposure-launcher-links" class="stack-list compact-list"></div>
+            </div>
+            <div>
+              <h3>Exposure findings</h3>
+              <div id="exposure-findings" class="stack-list compact-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="section-heading">
+            <div>
               <h2>SecOps remediation board</h2>
               <p>Security findings paired with operator instructions, so Faye can move from evidence to DevOps remediation.</p>
             </div>

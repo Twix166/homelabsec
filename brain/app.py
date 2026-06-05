@@ -38,6 +38,13 @@ from brainlib.classification import list_classification_lookup_entries
 from brainlib.config import COLLECTORS_ENABLED
 from brainlib.database import db
 from brainlib.errors import bad_gateway, bad_request, conflict, not_found
+from brainlib.exposure import (
+    exposure_summary,
+    list_exposure_dns_records,
+    list_exposure_findings,
+    list_exposure_launcher_links,
+    list_exposure_routes,
+)
 from brainlib.findings import (
     create_finding_instruction_or_404,
     list_findings as list_findings_records,
@@ -298,6 +305,51 @@ def create_finding_instruction(finding_id: str, payload: FindingInstructionReque
 def list_fingerprints():
     with db() as conn:
         return list_fingerprints_records(conn)
+
+
+@app.get("/exposure/summary")
+def get_exposure_summary(request: Request):
+    with db() as conn:
+        from brainlib.auth import require_user
+
+        require_user(conn, request)
+        return exposure_summary(conn)
+
+
+@app.get("/exposure/routes")
+def get_exposure_routes(request: Request):
+    with db() as conn:
+        from brainlib.auth import require_user
+
+        require_user(conn, request)
+        return list_exposure_routes(conn)
+
+
+@app.get("/exposure/dns")
+def get_exposure_dns_records(request: Request):
+    with db() as conn:
+        from brainlib.auth import require_user
+
+        require_user(conn, request)
+        return list_exposure_dns_records(conn)
+
+
+@app.get("/exposure/launcher-links")
+def get_exposure_launcher_links(request: Request):
+    with db() as conn:
+        from brainlib.auth import require_user
+
+        require_user(conn, request)
+        return list_exposure_launcher_links(conn)
+
+
+@app.get("/exposure/findings")
+def get_exposure_findings(request: Request):
+    with db() as conn:
+        from brainlib.auth import require_user
+
+        require_user(conn, request)
+        return list_exposure_findings(conn)
 
 
 @app.get("/classification_lookup")
