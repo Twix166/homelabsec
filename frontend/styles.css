@@ -310,6 +310,71 @@ th {
     linear-gradient(180deg, rgba(19, 34, 49, 0.98), rgba(10, 20, 31, 0.98));
 }
 
+.admin-tab-layout {
+  align-items: start;
+}
+
+.admin-tabs-shell {
+  padding-bottom: 18px;
+}
+
+.admin-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.admin-tab-button {
+  border: 1px solid rgba(184, 204, 219, 0.14);
+  border-radius: 999px;
+  padding: 10px 15px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.admin-tab-button:hover,
+.admin-tab-button:focus-visible {
+  border-color: rgba(141, 226, 198, 0.42);
+  color: var(--text);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.admin-tab-button.is-active {
+  border-color: rgba(141, 226, 198, 0.7);
+  background: linear-gradient(135deg, rgba(141, 226, 198, 0.2), rgba(73, 180, 217, 0.16));
+  color: var(--text);
+}
+
+.admin-tab-panel[hidden] {
+  display: none;
+}
+
+.admin-tab-panel.is-active {
+  animation: admin-tab-fade 0.16s ease-out;
+}
+
+@keyframes admin-tab-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .admin-card {
   background:
     radial-gradient(circle at top left, rgba(141, 226, 198, 0.1), transparent 34%),
@@ -582,7 +647,8 @@ tbody tr:hover {
 }
 
 .auth-form input,
-.auth-form select {
+.auth-form select,
+.auth-form textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -725,6 +791,68 @@ tbody tr:hover {
   border-radius: 18px;
   padding: 18px;
   text-align: center;
+}
+
+.findings-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.finding-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.finding-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.finding-evidence,
+.remediation-block,
+.latest-instruction {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.remediation-block strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.latest-instruction {
+  margin: 0;
+  color: #d9f8ee;
+  border-color: rgba(124, 224, 195, 0.22);
+}
+
+.severity-critical,
+.severity-high {
+  background: rgba(255, 122, 122, 0.16);
+  color: #ffb0b0;
+}
+
+.severity-medium {
+  background: rgba(255, 211, 128, 0.16);
+  color: #ffd380;
+}
+
+.severity-low {
+  background: rgba(124, 224, 195, 0.12);
+  color: #bdf2df;
+}
+
+.auth-form textarea {
+  min-height: 130px;
+  resize: vertical;
 }
 
 @media (max-width: 980px) {

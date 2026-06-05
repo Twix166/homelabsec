@@ -176,6 +176,53 @@ Next priority:
 - richer alert delivery validation
 - backup retention policy and off-host storage
 
+### Slice 11: Exposure Map Dashboard
+Priority: `P0`
+Status: `proposed`
+
+Goal:
+- Turn HomelabSec into an operator-facing exposure map by correlating Nmap observations with HCM targets/certificates, NPM routes, Heimdall launcher links, and DNS answers.
+
+Reference:
+- `docs/threat-exposure-map-and-dashboard-spec.md`
+
+Deliver:
+- add route, DNS, launcher-link, and exposure-finding data models
+- add read-only exposure summary/routes/DNS/launcher/findings APIs
+- add secret-safe HCM and NPM collectors
+- add Heimdall hygiene checks for raw-IP or legacy links where a preferred HTTPS route exists
+- add DNS alignment checks that distinguish candidate records from production failures
+- add dashboard cards/tables for control-plane risk, raw service exposure, TLS status, unknown services, and accepted findings
+
+Verification:
+- unit tests for route classifiers and finding severity rules
+- fixture-based integration test joining Nmap, HCM, NPM, Heimdall, and DNS payloads
+- dashboard contract tests for the new exposure endpoints
+
+### Slice 12: Sandfly Security Finding Integration
+Priority: `P2`
+Status: `parked`
+
+Goal:
+- Add Sandfly support as a future enrichment/source-of-findings integration for HomelabSec, after the core exposure map work is stable.
+
+Context:
+- Public Sandfly tooling and docs appear sufficient to build the integration if a licensed Sandfly server is available.
+- Expected integration points include API authentication, Sandfly-managed host inventory, check listing, scan launch, ad-hoc IP range or SSH credential scans, result retrieval, and mapping Sandfly alerts/findings into HomelabSec findings/remediation surfaces.
+- This is deliberately not a current implementation item.
+
+Deliver later:
+- document required Sandfly server/API configuration and secret handling
+- add a read-only Sandfly collector for hosts, checks, scans, and findings
+- map Sandfly severity/status/remediation into HomelabSec exposure findings without breaking existing finding shapes
+- add opt-in scan launch controls with safe defaults and clear operator confirmation
+- add fixture-backed tests using sanitized Sandfly API payloads
+
+Verification later:
+- unit tests for Sandfly payload parsing and severity/status mapping
+- integration tests with mocked Sandfly API responses
+- dashboard contract tests for Sandfly-origin findings
+
 ## Suggested Execution Order
 
 1. Slice 1: Alert Routing
@@ -188,6 +235,8 @@ Next priority:
 8. Slice 8: DB Migration Discipline
 9. Slice 9: Backup And Restore Drill
 10. Slice 10: Admin UX Improvements
+11. Slice 11: Exposure Map Dashboard
+12. Slice 12: Sandfly Security Finding Integration, only after a Sandfly server/API path is selected
 
 ## Parking Lot
 
@@ -199,3 +248,4 @@ These are valid ideas, but not current execution priorities:
 - multi-node deployment support
 - replacing host-network scheduler design
 - major frontend redesign
+- Sandfly support until the core exposure map is stable and Robert decides to connect a licensed Sandfly server

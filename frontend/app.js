@@ -5,6 +5,7 @@ const endpoints = {
   assets: "/api/assets",
   observations: "/api/observations",
   fingerprints: "/api/fingerprints",
+  findings: "/api/findings",
   adminStatus: "/api/admin/status",
 };
 
@@ -22,6 +23,16 @@ const elements = {
   detailTitle: document.getElementById("detail-title"),
   detailDescription: document.getElementById("detail-description"),
   detailList: document.getElementById("detail-list"),
+  findingsBoard: document.getElementById("findings-board"),
+  findingCount: document.getElementById("finding-count"),
+  remediationCount: document.getElementById("remediation-count"),
+  instructionModal: document.getElementById("instruction-modal"),
+  instructionForm: document.getElementById("instruction-form"),
+  instructionFindingTitle: document.getElementById("instruction-finding-title"),
+  instructionIntent: document.getElementById("instruction-intent"),
+  instructionPriority: document.getElementById("instruction-priority"),
+  instructionText: document.getElementById("instruction-text"),
+  instructionError: document.getElementById("instruction-error"),
   assetCount: document.getElementById("asset-count"),
   assetsTable: document.getElementById("assets-table"),
   filterAssetsAll: document.getElementById("filter-assets-all"),
@@ -39,6 +50,8 @@ const dashboardState = {
   observations: [],
   fingerprints: [],
   changes: [],
+  findings: [],
+  selectedFindingId: null,
   notableAssetIds: new Set(),
   notableReasonsByAssetId: new Map(),
   recentChangeByAssetId: new Map(),
@@ -166,6 +179,128 @@ function severityClass(severity) {
     return "";
   }
   return String(severity).toLowerCase();
+}
+
+function findingById(findingId) {
+  return dashboardState.findings.find((finding) => finding.finding_id === findingId) || null;
+}
+
+function evidenceSummary(evidence) {
+  if (!evidence) {
+    return "No structured evidence captured yet.";
+  }
+  if (typeof evidence === "string") {
+    return evidence;
+  }
+  return Object.entries(evidence)
+    .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : value}`)
+    .join(" · ");
+}
+
+function renderFindingsBoard() {
+  elements.findingCount.textContent = dashboardState.findings.length;
+  const queuedCount = dashboardState.findings.reduce((total, finding) => total + (finding.instruction_count || 0), 0);
+  elements.remediationCount.textContent = queuedCount;
+
+  if (!dashboardState.findings.length) {
+    setEmptyState(elements.findingsBoard, "No active findings are available yet.");
+    return;
+  }
+
+  elements.findingsBoard.innerHTML = dashboardState.findings
+    .map((finding) => {
+      const latest = finding.latest_instruction;
+      return `
+        <article class="finding-card">
+          <div class="list-topline">
+            <div>
+              <div class="list-title">${escapeHtml(finding.title)}</div>
+              <div class="list-meta">
+                <span>${escapeHtml(finding.preferred_name || "Unnamed asset")}</span>
+                <span>${escapeHtml(formatDate(finding.created_at))}</span>
+              </div>
+            </div>
+            <span class="pill severity-${escapeHtml(severityClass(finding.severity))}">${escapeHtml(finding.severity || "unknown")}</span>
+          </div>
+          <p>${escapeHtml(finding.description || "No description captured.")}</p>
+          <div class="finding-evidence mono">${escapeHtml(evidenceSummary(finding.evidence))}</div>
+          <div class="remediation-block">
+            <strong>Recommended action</strong>
+            <p>${escapeHtml(finding.recommended_action || "No remediation recommendation captured yet.")}</p>
+          </div>
+          <div class="list-meta">
+            <span>${escapeHtml(formatConfidence(finding.confidence))} confidence</span>
+            <span>${escapeHtml(finding.instruction_count || 0)} instruction(s)</span>
+            ${latest ? `<span>Latest: ${escapeHtml(latest.intent)} / ${escapeHtml(latest.priority)}</span>` : "<span>No instructions queued</span>"}
+          </div>
+          ${latest ? `<blockquote class="latest-instruction">${escapeHtml(latest.instruction_text)}</blockquote>` : ""}
+          <button class="refresh-button finding-instruction-button" type="button" data-finding-id="${escapeHtml(finding.finding_id)}">Add instruction</button>
+        </article>
+      `;
+    })
+    .join("");
+
+  for (const button of elements.findingsBoard.querySelectorAll(".finding-instruction-button")) {
+    button.addEventListener("click", () => openInstructionModal(button.dataset.findingId));
+  }
+}
+
+function openInstructionModal(findingId) {
+  const finding = findingById(findingId);
+  if (!finding) {
+    return;
+  }
+  dashboardState.selectedFindingId = findingId;
+  elements.instructionFindingTitle.textContent = finding.title;
+  elements.instructionIntent.value = "fix";
+  elements.instructionPriority.value = finding.severity === "critical" || finding.severity === "high" ? "high" : "normal";
+  elements.instructionText.value = finding.recommended_action || "";
+  elements.instructionError.hidden = true;
+  elements.instructionError.textContent = "";
+  elements.instructionModal.hidden = false;
+  elements.instructionText.focus();
+}
+
+function closeInstructionModal() {
+  dashboardState.selectedFindingId = null;
+  elements.instructionModal.hidden = true;
+}
+
+async function submitFindingInstruction(event) {
+  event.preventDefault();
+  const findingId = dashboardState.selectedFindingId;
+  if (!findingId) {
+    return;
+  }
+
+  const instructionText = elements.instructionText.value.trim();
+  if (!instructionText) {
+    elements.instructionError.textContent = "Instruction text is required.";
+    elements.instructionError.hidden = false;
+    return;
+  }
+
+  try {
+    const response = await fetch(`${endpoints.findings}/${encodeURIComponent(findingId)}/instructions`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction_text: instructionText,
+        intent: elements.instructionIntent.value,
+        priority: elements.instructionPriority.value,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || `${response.status} ${response.statusText}`);
+    }
+    closeInstructionModal();
+    await loadDashboard();
+  } catch (error) {
+    elements.instructionError.textContent = error.message;
+    elements.instructionError.hidden = false;
+  }
 }
 
 function filterAssets(assets) {
@@ -399,18 +534,20 @@ async function loadDashboard() {
   elements.refreshButton.textContent = "Refreshing";
 
   try {
-    const [health, summary, daily, assets, observations, fingerprints] = await Promise.all([
+    const [health, summary, daily, assets, observations, fingerprints, findings] = await Promise.all([
       fetchJson(endpoints.health),
       fetchJson(endpoints.summary),
       fetchJson(endpoints.daily),
       fetchJson(endpoints.assets),
       fetchJson(endpoints.observations),
       fetchJson(endpoints.fingerprints),
+      fetchJson(endpoints.findings),
     ]);
 
     dashboardState.assets = assets.assets || [];
     dashboardState.observations = observations.observations || [];
     dashboardState.fingerprints = fingerprints.fingerprints || [];
+    dashboardState.findings = findings.findings || [];
     dashboardState.changes = daily.recent_changes || [];
     dashboardState.notableAssetIds = new Set((daily.notable_assets || []).map((asset) => asset.asset_id));
     dashboardState.notableReasonsByAssetId = new Map(
@@ -428,6 +565,7 @@ async function loadDashboard() {
 
     updateAssetFilterButtons();
     updateSortButtons();
+    renderFindingsBoard();
     renderAssetsTable();
     renderSummaryDetail(dashboardState.activeSummary);
   } catch (error) {
@@ -436,8 +574,7 @@ async function loadDashboard() {
     elements.detailTitle.textContent = "Detail view";
     elements.detailDescription.textContent = "Click a summary card to list the underlying items.";
     setEmptyState(elements.detailList, `Failed to load detail data: ${error.message}`);
-    setEmptyState(elements.adminStatus, `Failed to load admin status: ${error.message}`);
-    setEmptyState(elements.recentChanges, `Failed to load dashboard: ${error.message}`);
+    setEmptyState(elements.findingsBoard, `Failed to load findings: ${error.message}`);
     renderAssetsTable();
   } finally {
     elements.refreshButton.disabled = false;
@@ -495,6 +632,12 @@ elements.filterConfidenceBlue.addEventListener("click", () => {
   renderAssetsTable();
 });
 
+elements.instructionForm.addEventListener("submit", submitFindingInstruction);
+
+for (const closeButton of document.querySelectorAll("[data-close-instruction-modal]")) {
+  closeButton.addEventListener("click", closeInstructionModal);
+}
+
 for (const button of elements.sortButtons) {
   button.addEventListener("click", () => {
     const { sortKey } = button.dataset;
@@ -525,6 +668,5 @@ initDashboard().catch((error) => {
   elements.healthStatus.textContent = "error";
   elements.reportGenerated.textContent = "-";
   setEmptyState(elements.detailList, `Failed to load dashboard: ${error.message}`);
-  setEmptyState(elements.adminStatus, `Failed to load admin status: ${error.message}`);
-  setEmptyState(elements.recentChanges, `Failed to load dashboard: ${error.message}`);
+  setEmptyState(elements.findingsBoard, `Failed to load findings: ${error.message}`);
 });

@@ -124,6 +124,45 @@ Still manual:
 - creating and testing a recurring backup plan
 - installing or updating custom Ollama models beyond the installer’s existence check
 
+## Reproducible single-host deployment
+
+The repo includes a reproducible Docker Compose deployment shape for UAT or production-style single-host installs, including the same stack layout used by the live pi4 deployment.
+
+Source-of-truth files:
+
+- `compose/compose.yaml` — base application stack
+- `compose/compose.uat.yaml` — single-host/UAT overlay: private Postgres, host-local API, published frontend
+- `compose/compose.monitoring.yaml` — Prometheus, Grafana, and Alertmanager overlay
+- `.env.uat.example` — example environment for the UAT/pi4-style port layout
+- `docs/deployment/homelabsec-compose-stack.md` — full install, update, reverse-proxy, backup, and verification runbook
+
+Quick reproduce command:
+
+```bash
+git clone https://github.com/Twix166/homelabsec.git
+cd homelabsec
+cp .env.uat.example .env
+$EDITOR .env
+cd compose
+docker compose \
+  --env-file ../.env \
+  -f compose.yaml \
+  -f compose.uat.yaml \
+  -f compose.monitoring.yaml \
+  up -d --build
+```
+
+The UAT overlay defaults to:
+
+- frontend: `0.0.0.0:18080`
+- brain API: `127.0.0.1:18088`
+- Prometheus: `0.0.0.0:19090`
+- Grafana: `0.0.0.0:13001`
+- Alertmanager: `0.0.0.0:19093`
+- Postgres: private to the Compose network
+
+Use a reverse proxy such as Nginx Proxy Manager, Caddy, Traefik, or nginx to provide TLS/authenticated routes to the published frontend and monitoring ports. Keep the brain API bound to loopback unless an authenticated edge layer is added.
+
 ## Backup And Restore
 
 HomelabSec now includes scripted Postgres backup and restore helpers for compose-based deployments.
@@ -657,6 +696,7 @@ The monitoring overlay now also includes:
 Relevant variables:
 
 ```bash
+MONITORING_HOST_BIND=127.0.0.1
 PROMETHEUS_HOST_PORT=9090
 ALERTMANAGER_HOST_PORT=9093
 ALERTMANAGER_DEFAULT_RECEIVER=null

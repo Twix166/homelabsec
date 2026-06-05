@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HomelabSec Admin Console</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=admin-links-20260604" />
   </head>
   <body>
     <div class="shell">
@@ -20,8 +20,23 @@
         </div>
       </header>
 
-      <main class="layout">
-        <section class="panel admin-panel">
+      <main class="layout admin-tab-layout">
+        <section class="panel panel-wide admin-tabs-shell">
+          <div class="section-heading">
+            <div>
+              <h2>Admin sections</h2>
+              <p>Switch between status, enrichment modules, raw data sources, and user access without leaving the console.</p>
+            </div>
+          </div>
+          <div class="admin-tab-list" role="tablist" aria-label="Admin console sections">
+            <button id="admin-tab-status" class="admin-tab-button is-active" type="button" role="tab" aria-selected="true" aria-controls="admin-panel-status" tabindex="0" data-admin-tab-target="status">Status</button>
+            <button id="admin-tab-enrichment" class="admin-tab-button" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-enrichment" tabindex="-1" data-admin-tab-target="enrichment">Data enrichment</button>
+            <button id="admin-tab-sources" class="admin-tab-button" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-sources" tabindex="-1" data-admin-tab-target="sources">Raw data sources</button>
+            <button id="admin-tab-users" class="admin-tab-button" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-users" tabindex="-1" data-admin-tab-target="users">User management</button>
+          </div>
+        </section>
+
+        <section id="admin-panel-status" class="panel panel-wide admin-panel admin-tab-panel is-active" role="tabpanel" aria-labelledby="admin-tab-status" data-admin-tab-panel="status">
           <div class="section-heading">
             <h2>Admin status</h2>
             <p>API health, scheduler freshness, and quick access links.</p>
@@ -29,7 +44,7 @@
           <div id="admin-status" class="stack-list"></div>
         </section>
 
-        <section class="panel panel-wide">
+        <section id="admin-panel-enrichment" class="panel panel-wide admin-tab-panel" role="tabpanel" aria-labelledby="admin-tab-enrichment" data-admin-tab-panel="enrichment" hidden>
           <div class="section-heading">
             <div>
               <h2>Data enrichment</h2>
@@ -39,7 +54,7 @@
           <div id="module-list" class="stack-list"></div>
         </section>
 
-        <section class="panel panel-wide">
+        <section id="admin-panel-sources" class="panel panel-wide admin-tab-panel" role="tabpanel" aria-labelledby="admin-tab-sources" data-admin-tab-panel="sources" hidden>
           <div class="section-heading">
             <h2>Raw data sources</h2>
             <p>Control which ingest and discovery sources are enabled for the platform.</p>
@@ -47,7 +62,7 @@
           <div id="source-list" class="stack-list"></div>
         </section>
 
-        <section class="panel panel-wide">
+        <section id="admin-panel-users" class="panel panel-wide admin-tab-panel" role="tabpanel" aria-labelledby="admin-tab-users" data-admin-tab-panel="users" hidden>
           <div class="section-heading">
             <h2>User management</h2>
             <p>Create users and manage access levels for operators and administrators.</p>
@@ -83,7 +98,7 @@
         </section>
       </main>
     </div>
-    <script src="/auth.js"></script>
-    <script src="/admin.js"></script>
+    <script src="/auth.js?v=admin-links-20260604"></script>
+    <script src="/admin.js?v=admin-links-20260604"></script>
   </body>
 </html>

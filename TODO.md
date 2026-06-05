@@ -72,6 +72,7 @@ Status:
 
 - An optional OIDC-based stronger-auth overlay now exists for exposed deployments.
 - Add real operator notification endpoints after choosing the preferred receiver channel.
+- Park future Sandfly support until the core exposure map is stable and a licensed Sandfly server/API path is selected.
 
 ## Priority 6: Testing and Verification
 

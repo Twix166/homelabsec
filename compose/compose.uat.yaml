@@ -1,0 +1,29 @@
+# UAT / reproducible single-host deployment overlay.
+#
+# Use this when a HomelabSec stack needs to run alongside other services on the
+# same Docker host. It keeps Postgres private, binds the API to host-local
+# loopback, and publishes only the operator-facing frontend plus optional
+# monitoring ports. The live pi4 deployment uses this shape with host-specific
+# values supplied from .env.
+
+services:
+  postgres:
+    # Keep the database private to the Compose network in UAT/production-style
+    # deployments. Backups and restores should use docker compose exec instead
+    # of a published database port.
+    ports: !reset []
+
+  brain:
+    ports: !override
+      - "127.0.0.1:${BRAIN_HOST_PORT:-18088}:8088"
+
+  scheduler:
+    # Scheduler runs in host network mode in the base stack so it can perform
+    # local-network discovery. In this overlay the brain API is reachable via
+    # the host-local published API port above.
+    environment:
+      API_BASE: "http://127.0.0.1:${BRAIN_HOST_PORT:-18088}"
+
+  frontend:
+    ports: !override
+      - "${HOMELABSEC_UAT_FRONTEND_BIND:-0.0.0.0}:${HOMELABSEC_UAT_FRONTEND_PORT:-18080}:80"

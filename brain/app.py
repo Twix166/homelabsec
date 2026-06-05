@@ -38,6 +38,10 @@ from brainlib.classification import list_classification_lookup_entries
 from brainlib.config import COLLECTORS_ENABLED
 from brainlib.database import db
 from brainlib.errors import bad_gateway, bad_request, conflict, not_found
+from brainlib.findings import (
+    create_finding_instruction_or_404,
+    list_findings as list_findings_records,
+)
 from brainlib.fingerprints import (
     classification_lookup_signature,
     classification_lookup_signature_hash,
@@ -135,6 +139,12 @@ class CompleteLynisRunRequest(BaseModel):
     report_text: str | None = None
     log_text: str | None = None
     error_text: str | None = None
+
+
+class FindingInstructionRequest(BaseModel):
+    instruction_text: str
+    intent: str = "fix"
+    priority: str = "normal"
 
 
 @app.middleware("http")
@@ -256,6 +266,32 @@ def get_asset_detail(asset_id: str):
 def list_observations():
     with db() as conn:
         return list_observations_records(conn)
+
+
+@app.get("/findings")
+def list_findings(request: Request):
+    with db() as conn:
+        from brainlib.auth import require_user
+
+        require_user(conn, request)
+        return list_findings_records(conn)
+
+
+@app.post("/findings/{finding_id}/instructions")
+def create_finding_instruction(finding_id: str, payload: FindingInstructionRequest, request: Request):
+    with db() as conn:
+        user = auth_me(conn, request)["user"]
+        try:
+            return create_finding_instruction_or_404(
+                conn,
+                finding_id,
+                instruction_text=payload.instruction_text,
+                requested_by_user_id=user["user_id"],
+                intent=payload.intent,
+                priority=payload.priority,
+            )
+        except ValueError as exc:
+            raise bad_request(str(exc)) from exc
 
 
 @app.get("/fingerprints")
