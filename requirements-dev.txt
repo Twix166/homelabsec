@@ -1,3 +1,5 @@
 pytest
 fastapi
+httpx
 psycopg[binary]
+requests
