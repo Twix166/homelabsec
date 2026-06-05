@@ -30,6 +30,11 @@ const elements = {
   detailList: document.getElementById("detail-list"),
   findingsBoard: document.getElementById("findings-board"),
   exposureSummary: document.getElementById("exposure-summary"),
+  exposureReadiness: document.getElementById("exposure-readiness"),
+  exposureReadinessDetail: document.getElementById("exposure-readiness-detail"),
+  exposureLastGenerated: document.getElementById("exposure-last-generated"),
+  exposureCoverageGrid: document.getElementById("exposure-coverage-grid"),
+  exposureSeveritySummary: document.getElementById("exposure-severity-summary"),
   exposureRoutes: document.getElementById("exposure-routes"),
   exposureDns: document.getElementById("exposure-dns"),
   exposureLauncherLinks: document.getElementById("exposure-launcher-links"),
@@ -270,6 +275,84 @@ function renderCompactCards(container, items, renderItem, emptyMessage) {
   container.innerHTML = items.map(renderItem).join("");
 }
 
+function exposureSummaryCount(summary, key) {
+  const value = summary?.[key];
+  return typeof value === "number" ? value : 0;
+}
+
+function exposureReadiness(summary) {
+  const routes = exposureSummaryCount(summary, "routes");
+  const dnsRecords = exposureSummaryCount(summary, "dns_records");
+  const launcherLinks = exposureSummaryCount(summary, "launcher_links");
+  const findings = exposureSummaryCount(summary, "findings");
+
+  if (!summary || !summary.generated_at) {
+    return {
+      label: "collector coverage unavailable",
+      detail: "Exposure contracts loaded, but no generated timestamp is available yet. Run the collectors/correlation job and redeploy before UAT sign-off.",
+      className: "exposure-status-warning",
+    };
+  }
+
+  if (routes && dnsRecords && launcherLinks) {
+    return {
+      label: findings ? "open exposure findings" : "collector-backed exposure map ready",
+      detail: findings
+        ? "Collectors are populated and correlation found open items to review before treating routes as clean."
+        : "Routes, DNS, and launcher links are populated; no open exposure findings are reported by the current correlation pass.",
+      className: findings ? "exposure-status-warning" : "exposure-status-ok",
+    };
+  }
+
+  return {
+    label: "collector coverage incomplete",
+    detail: "At least one source has not produced data yet. UAT can verify the panel, but route hygiene is not complete until routes, DNS, and launcher links are all populated.",
+    className: "exposure-status-warning",
+  };
+}
+
+function renderExposureStatus(summary) {
+  const readiness = exposureReadiness(summary);
+  elements.exposureReadiness.textContent = readiness.label;
+  elements.exposureReadinessDetail.textContent = readiness.detail;
+  elements.exposureLastGenerated.textContent = formatDate(summary?.generated_at);
+  elements.exposureReadiness.className = readiness.className;
+}
+
+function renderExposureCoverage(summary) {
+  const coverageItems = [
+    ["Routes", "routes", "Preferred hostnames and NPM/HCM backend targets"],
+    ["DNS", "dns_records", "Resolved or planned records for exposed services"],
+    ["Launcher", "launcher_links", "Heimdall links checked for raw IP / raw HTTP hygiene"],
+    ["Findings", "findings", "Generated exposure issues from the latest correlation pass"],
+  ];
+
+  elements.exposureCoverageGrid.innerHTML = coverageItems
+    .map(([label, key, detail]) => {
+      const count = exposureSummaryCount(summary, key);
+      const state = count > 0 ? "available" : "missing";
+      return `
+        <div class="exposure-coverage-card ${state}">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(count)}</strong>
+          <p>${escapeHtml(detail)}</p>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderExposureSeveritySummary(summary) {
+  const severities = summary?.open_findings_by_severity || {};
+  const ordered = ["critical", "high", "medium", "low", "info"];
+  const rendered = ordered
+    .filter((severity) => severities[severity])
+    .map((severity) => `<span class="pill severity-${escapeHtml(severity)}">${escapeHtml(severity)}: ${escapeHtml(severities[severity])}</span>`)
+    .join("");
+
+  elements.exposureSeveritySummary.innerHTML = rendered || '<span class="muted-cell">No open exposure findings in the latest correlation pass.</span>';
+}
+
 function renderExposureMap() {
   const summary = dashboardState.exposure.summary || {};
   const severitySummary = Object.entries(summary.open_findings_by_severity || {})
@@ -285,6 +368,9 @@ function renderExposureMap() {
     </div>
     <div class="list-meta mono">${escapeHtml(severitySummary)}</div>
   `;
+  renderExposureStatus(summary);
+  renderExposureCoverage(summary);
+  renderExposureSeveritySummary(summary);
 
   renderCompactCards(
     elements.exposureRoutes,
@@ -723,6 +809,9 @@ async function loadDashboard() {
     setEmptyState(elements.exposureDns, "Exposure data unavailable.");
     setEmptyState(elements.exposureLauncherLinks, "Exposure data unavailable.");
     setEmptyState(elements.exposureFindings, "Exposure data unavailable.");
+    renderExposureStatus(null);
+    renderExposureCoverage(null);
+    renderExposureSeveritySummary(null);
     renderAssetsTable();
   } finally {
     elements.refreshButton.disabled = false;
@@ -821,4 +910,7 @@ initDashboard().catch((error) => {
   setEmptyState(elements.exposureDns, "Exposure data unavailable.");
   setEmptyState(elements.exposureLauncherLinks, "Exposure data unavailable.");
   setEmptyState(elements.exposureFindings, "Exposure data unavailable.");
+  renderExposureStatus(null);
+  renderExposureCoverage(null);
+  renderExposureSeveritySummary(null);
 });

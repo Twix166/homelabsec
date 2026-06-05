@@ -62,10 +62,23 @@
           <div class="section-heading">
             <div>
               <h2>Exposure map</h2>
-              <p>Read-only route, DNS, launcher, and exposure-finding contracts for the next control-plane correlation slice.</p>
+              <p>UAT-visible collector-backed view of preferred routes, DNS, launcher hygiene, and generated exposure findings.</p>
             </div>
             <div id="exposure-summary" class="exposure-summary"></div>
           </div>
+          <div id="exposure-status-panel" class="exposure-status-panel">
+            <div>
+              <p class="eyebrow">Exposure readiness</p>
+              <strong id="exposure-readiness">Loading collector status</strong>
+              <p id="exposure-readiness-detail">Waiting for route, DNS, launcher, and finding contracts.</p>
+            </div>
+            <div class="exposure-status-meta">
+              <span>Generated</span>
+              <strong id="exposure-last-generated">-</strong>
+            </div>
+          </div>
+          <div id="exposure-coverage-grid" class="exposure-coverage-grid"></div>
+          <div id="exposure-severity-summary" class="severity-summary"></div>
           <div class="exposure-grid">
             <div>
               <h3>Routes</h3>
