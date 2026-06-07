@@ -142,6 +142,7 @@ Source-of-truth files:
 - `docs/operations/secret-management-runbook.md` — operator runbook for Bitwarden EU, SOPS/age encryption, local env rendering, recovery drills, and rotation
 - `secrets/` — non-secret inventory metadata plus SOPS-encrypted automation secret bundles; generated runtime files stay ignored
 - `docs/operations/homelab-backup-strategy.md` — Thunderbluff-centred 3-2-1 backup strategy for homelab applications and control-plane state
+- `docs/operations/self-hosted-git-migration-strategy.md` — staged plan for moving selected GitHub repositories to a self-hosted Git service while retaining mirrors, backups, and rollback paths
 - `infra/proxmox/proxmox-host-access.yml` — Ansible IaC for the Proxmox `fayebot` account, key-only SSH, passwordless sudo, host access note, and removal of the former temporary direct-root key
 
 Quick reproduce command:

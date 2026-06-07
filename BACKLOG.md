@@ -56,6 +56,32 @@ Safety rules:
 Next action:
 - with Robert present, login/unlock Bitwarden EU, create recovery records for Faye's SOPS age identity, and start migrating the first real HomelabSec runtime secrets into encrypted SOPS bundles.
 
+### Operational P0: Self-Hosted Git Migration Programme
+Priority: `P0`
+Status: `planned`
+
+Goal:
+- Move selected repositories from GitHub-only hosting to a self-hosted Git service without losing mirrors, backups, recovery options, or public-discovery benefits where they matter.
+
+Reference:
+- `docs/operations/self-hosted-git-migration-strategy.md`
+
+Deliver:
+- choose the self-hosted Git platform, with Forgejo as the current recommended pilot
+- deploy the platform behind the homelab HTTPS/DNS/certificate chain with SSH Git access
+- implement backup and restore drills before moving operational repositories
+- migrate low-risk pilot repositories first, then active personal repositories, then operational/private repositories
+- keep GitHub mirrors or fallback remotes until restore and rollback are proven
+- defer high-impact autonomous/financial repositories until explicit go/no-go after lower-risk migration success
+
+Safety rules:
+- do not delete or archive GitHub repositories during the pilot phase
+- do not print or commit GitHub/Forgejo tokens, deploy keys, webhook secrets, Actions secrets, or private SSH keys
+- do not make self-hosted Git the only copy of an important repository until backup and restore are verified
+
+Next action:
+- confirm Forgejo as the pilot platform or choose an alternative, then write/deploy the first LAN-only Forgejo runbook and test it with a Tier 0 repository.
+
 ### Operational P0: Thunderbluff 3-2-1 Backup Programme
 Priority: `P0`
 Status: `planned`

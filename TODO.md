@@ -75,6 +75,7 @@ Status:
 - Park future Sandfly support until the core exposure map is stable and a licensed Sandfly server/API path is selected.
 - Secret management implementation has started: Faye has `age`, SOPS, and Bitwarden CLI configured for Bitwarden EU, and the repo now contains `.sops.yaml`, `secrets/`, `scripts/secrets/`, and `docs/operations/secret-management-runbook.md` for SOPS/age validation and local runtime env rendering.
 - Treat Thunderbluff-centred 3-2-1 backups as a P0 operational programme after secret handling is designed; see `docs/operations/homelab-backup-strategy.md`.
+- Treat self-hosted Git migration as a staged P0 operational programme: prove Forgejo or the chosen alternative, backup/restore, mirrors, and rollback with low-risk repositories before moving operational/private repositories; see `docs/operations/self-hosted-git-migration-strategy.md`.
 
 ## Priority 6: Testing and Verification
 
