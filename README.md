@@ -135,6 +135,8 @@ Source-of-truth files:
 - `compose/compose.monitoring.yaml` — Prometheus, Grafana, and Alertmanager overlay
 - `.env.uat.example` — example environment for the UAT/pi4-style port layout
 - `docs/deployment/homelabsec-compose-stack.md` — full install, update, reverse-proxy, backup, and verification runbook
+- `docs/runbooks/macpro-proxmox-power-recovery.md` — Mac Pro AC-restore and Proxmox guest-autostart recovery runbook
+- `infra/proxmox/proxmox-host-access.yml` — Ansible IaC for the Proxmox `fayebot` account, key-only SSH, passwordless sudo, host access note, and removal of the former temporary direct-root key
 
 Quick reproduce command:
 

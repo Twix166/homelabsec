@@ -1,0 +1,107 @@
+---
+- name: Harden Proxmox host automation access for Faye
+  hosts: proxmox_hosts
+  become: true
+  gather_facts: true
+
+  vars:
+    sudoers_content: |
+      # Managed by homelabsec infra/proxmox/proxmox-host-access.yml.
+      # Dedicated key-only automation account for Faye/Hermes Proxmox host work.
+      Defaults:{{ proxmox_fayebot_user }} !authenticate
+      Defaults:{{ proxmox_fayebot_user }} env_reset
+      Defaults:{{ proxmox_fayebot_user }} secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      {{ proxmox_fayebot_user }} ALL=(root) NOPASSWD: ALL
+
+  pre_tasks:
+    - name: Install sudo for Proxmox host automation
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+        update_cache: true
+      when: ansible_facts['os_family'] == 'Debian'
+
+  tasks:
+    - name: Create dedicated locked-password automation account
+      ansible.builtin.user:
+        name: "{{ proxmox_fayebot_user }}"
+        comment: Faye/Hermes Proxmox automation account
+        shell: /bin/bash
+        create_home: true
+        groups: "{{ proxmox_fayebot_groups }}"
+        append: true
+        password_lock: true
+
+    - name: Ensure fayebot SSH directory is private
+      ansible.builtin.file:
+        path: "/home/{{ proxmox_fayebot_user }}/.ssh"
+        state: directory
+        owner: "{{ proxmox_fayebot_user }}"
+        group: "{{ proxmox_fayebot_user }}"
+        mode: "0700"
+
+    - name: Install dedicated fayebot public SSH key
+      ansible.builtin.lineinfile:
+        path: "/home/{{ proxmox_fayebot_user }}/.ssh/authorized_keys"
+        line: "{{ proxmox_fayebot_authorized_key }}"
+        state: present
+        create: true
+        owner: "{{ proxmox_fayebot_user }}"
+        group: "{{ proxmox_fayebot_user }}"
+        mode: "0600"
+
+    - name: Configure passwordless sudo for fayebot
+      ansible.builtin.copy:
+        dest: "{{ proxmox_fayebot_sudoers_path }}"
+        content: "{{ sudoers_content }}"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Write local Proxmox host operator note
+      ansible.builtin.copy:
+        dest: "{{ proxmox_fayebot_readme_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          This Proxmox host has a dedicated fayebot automation account for Faye/Hermes operations.
+
+          Security model:
+          - Account: fayebot
+          - Password login: locked
+          - Remote login: public-key authentication for the dedicated Faye Proxmox key
+          - Privilege: passwordless sudo via /etc/sudoers.d/90-fayebot
+          - Purpose: replace temporary direct root login for automated Proxmox/Mac Pro maintenance
+
+          Operational note:
+          - Direct root login for the temporary Faye Proxmox key is removed after fayebot access is verified.
+
+    - name: Validate fayebot sudoers file
+      ansible.builtin.command: "/usr/sbin/visudo -cf {{ proxmox_fayebot_sudoers_path }}"
+      changed_when: false
+
+    - name: Prove fayebot can run non-interactive sudo
+      ansible.builtin.command: "su - {{ proxmox_fayebot_user }} -c 'sudo -n true'"
+      changed_when: false
+
+    - name: Remove former temporary direct-root Faye SSH keys
+      ansible.builtin.lineinfile:
+        path: /root/.ssh/authorized_keys
+        line: "{{ item }}"
+        state: absent
+        create: false
+      loop: "{{ proxmox_remove_root_authorized_keys }}"
+
+    - name: Report managed automation account state
+      ansible.builtin.command: "id {{ proxmox_fayebot_user }}"
+      changed_when: false
+      register: fayebot_id
+
+    - name: Show managed state summary
+      ansible.builtin.debug:
+        msg:
+          - "{{ fayebot_id.stdout }}"
+          - "{{ proxmox_fayebot_sudoers_path }} validated"
+          - "Temporary direct-root Faye SSH key absent"
