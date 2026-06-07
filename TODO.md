@@ -73,7 +73,7 @@ Status:
 - An optional OIDC-based stronger-auth overlay now exists for exposed deployments.
 - Add real operator notification endpoints after choosing the preferred receiver channel.
 - Park future Sandfly support until the core exposure map is stable and a licensed Sandfly server/API path is selected.
-- Treat secret management as a P0 operational programme before broad backup rollout; see `docs/operations/homelab-secret-management-strategy.md`.
+- Secret management implementation has started: Faye has `age`, SOPS, and Bitwarden CLI configured for Bitwarden EU, and the repo now contains `.sops.yaml`, `secrets/`, `scripts/secrets/`, and `docs/operations/secret-management-runbook.md` for SOPS/age validation and local runtime env rendering.
 - Treat Thunderbluff-centred 3-2-1 backups as a P0 operational programme after secret handling is designed; see `docs/operations/homelab-backup-strategy.md`.
 
 ## Priority 6: Testing and Verification

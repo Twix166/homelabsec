@@ -130,6 +130,10 @@ Never rely on a single running password-manager instance as the only copy of sec
 
 ### Phase 0: freeze and protect
 
+Implementation status: started in this repository. `.sops.yaml`, `secrets/`, and
+`scripts/secrets/` now provide the initial SOPS/age workflow, validation guard,
+encrypted sample bundle, and local env renderer.
+
 - Stop adding new plaintext secrets to Git, chat, docs, or generic backups.
 - Add or verify repo-level secret scanning before every commit/push.
 - Review `.gitignore`, `.dockerignore`, and examples so generated `.env`, keys, vault exports, and backup files are excluded.

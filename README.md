@@ -32,6 +32,7 @@ This repo is at the stage where it can:
 - Docker Compose
 - Git
 - Curl
+- age, SOPS, and Bitwarden CLI (`bw`) for the managed secrets workflow
 - Ollama running locally on the host
 - An installed classifier model such as `homelabsec-classifier`
 
@@ -138,6 +139,8 @@ Source-of-truth files:
 - `docs/deployment/homelabsec-compose-stack.md` — full install, update, reverse-proxy, backup, and verification runbook
 - `docs/runbooks/macpro-proxmox-power-recovery.md` — Mac Pro AC-restore and Proxmox guest-autostart recovery runbook
 - `docs/operations/homelab-secret-management-strategy.md` — P0 strategy for vaulting, backing up, rotating, and recovering API keys, SSH keys, tokens, and other secrets without exposing raw values
+- `docs/operations/secret-management-runbook.md` — operator runbook for Bitwarden EU, SOPS/age encryption, local env rendering, recovery drills, and rotation
+- `secrets/` — non-secret inventory metadata plus SOPS-encrypted automation secret bundles; generated runtime files stay ignored
 - `docs/operations/homelab-backup-strategy.md` — Thunderbluff-centred 3-2-1 backup strategy for homelab applications and control-plane state
 - `infra/proxmox/proxmox-host-access.yml` — Ansible IaC for the Proxmox `fayebot` account, key-only SSH, passwordless sudo, host access note, and removal of the former temporary direct-root key
 

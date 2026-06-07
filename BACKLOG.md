@@ -25,14 +25,21 @@ Use it as the working queue. `TODO.md` remains the broader status and historical
 
 ### Operational P0: Secret Management Programme
 Priority: `P0`
-Status: `planned`
+Status: `in progress`
 
 Goal:
 - Bring API keys, SSH keys, tokens, certificates, recovery material, and service credentials under deliberate management before broad backup implementation.
 
 Reference:
 - `docs/operations/homelab-secret-management-strategy.md`
+- `docs/operations/secret-management-runbook.md`
 - `docs/operations/secret-inventory-template.md`
+- `secrets/README.md`
+
+Delivered so far:
+- installed Faye-side `age`, `sops`, and Bitwarden CLI tooling with Bitwarden CLI pointed at Bitwarden EU
+- generated Faye's initial SOPS age recipient and wired it into `.sops.yaml`
+- added an encrypted sample secret bundle, metadata-only inventory example, guardrail validator, and local env renderer
 
 Deliver:
 - use Robert's existing Bitwarden EU account as the primary human/recovery vault and SOPS + age as the automation secret format
@@ -47,7 +54,7 @@ Safety rules:
 - report inventory coverage, freshness, rotation due dates, and recovery-test status only
 
 Next action:
-- build the first non-secret inventory and migration checklist around Bitwarden EU plus SOPS/age.
+- with Robert present, login/unlock Bitwarden EU, create recovery records for Faye's SOPS age identity, and start migrating the first real HomelabSec runtime secrets into encrypted SOPS bundles.
 
 ### Operational P0: Thunderbluff 3-2-1 Backup Programme
 Priority: `P0`
