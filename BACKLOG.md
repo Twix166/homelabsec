@@ -23,6 +23,57 @@ Use it as the working queue. `TODO.md` remains the broader status and historical
 
 ## Current Prioritized Queue
 
+### Operational P0: Secret Management Programme
+Priority: `P0`
+Status: `planned`
+
+Goal:
+- Bring API keys, SSH keys, tokens, certificates, recovery material, and service credentials under deliberate management before broad backup implementation.
+
+Reference:
+- `docs/operations/homelab-secret-management-strategy.md`
+- `docs/operations/secret-inventory-template.md`
+
+Deliver:
+- choose the primary human vault and automation secret format, with SOPS+age as the default automation recommendation
+- inventory high-value secrets by metadata only: owner, consumer, storage, rotation, recovery test, blast radius, and revocation path
+- migrate known high-value secrets out of ad-hoc `.env` files and loose key locations into the chosen vault/encrypted workflow
+- create and test encrypted backups for the vault/export, SOPS/age recovery material, backup repository passwords, and break-glass runbook
+- rotate old, broad, or unclear-provenance credentials in staged batches
+- add HomelabSec posture checks later without collecting raw secret values
+
+Safety rules:
+- never put plaintext private keys, tokens, passwords, seeds, macaroons, backup repository passwords, rendered `.env` files, or vault exports in GitHub, backlog files, dashboards, alerts, logs, or Telegram
+- report inventory coverage, freshness, rotation due dates, and recovery-test status only
+
+Next action:
+- choose the primary vault, then build the first non-secret inventory and migration checklist.
+
+### Operational P0: Thunderbluff 3-2-1 Backup Programme
+Priority: `P0`
+Status: `planned`
+
+Goal:
+- Make Thunderbluff the primary encrypted backup landing zone, then complete a 3-2-1 posture with an independent/offsite or offline third copy.
+
+Reference:
+- `docs/operations/homelab-backup-strategy.md`
+
+Deliver:
+- confirm Thunderbluff backup share/path, access, capacity, snapshot/immutability support, and restricted backup users/keys
+- inventory all important homelab apps and classify by RPO/RTO/data criticality
+- implement the first three monitored jobs: Faye/Hermes runtime, HomelabSec Postgres/manifests, and proxy/DNS/certificate control-plane state
+- extend to Home Assistant, Trading Team, WordPress, media/document apps, monitoring, Proxmox guests, and Lightning/Umbrel critical state
+- replicate encrypted backups to a separate/offsite/offline third copy and run quarterly restore drills
+
+Safety rules:
+- do not start implementation until Robert explicitly asks; this is currently a planning/backlog item
+- application-aware database dumps before raw volume copies
+- report presence, age, size, snapshot IDs, and restore-test status only; never expose backup contents or secrets
+
+Next action:
+- after the secret-management choice is made, obtain/verify Thunderbluff access and implement the first three jobs.
+
 ### Slice 1: Alert Routing
 Priority: `P0`
 Status: `done`
@@ -241,8 +292,10 @@ Verification later:
 8. Slice 8: DB Migration Discipline
 9. Slice 9: Backup And Restore Drill
 10. Slice 10: Admin UX Improvements
-11. Slice 11: Exposure Map Dashboard
-12. Slice 12: Sandfly Security Finding Integration, only after a Sandfly server/API path is selected
+11. Operational P0: Secret Management Programme
+12. Operational P0: Thunderbluff 3-2-1 Backup Programme
+13. Slice 11: Exposure Map Dashboard
+14. Slice 12: Sandfly Security Finding Integration, only after a Sandfly server/API path is selected
 
 ## Parking Lot
 

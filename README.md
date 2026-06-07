@@ -121,6 +121,7 @@ Still manual:
 - deciding whether the deployment is LAN-only or exposed behind a proxy
 - configuring TLS and authentication if you expose the stack beyond a trusted admin network
 - setting host firewall policy
+- choosing a primary vault and migrating real secrets into managed storage
 - creating and testing a recurring backup plan
 - installing or updating custom Ollama models beyond the installer’s existence check
 
@@ -136,6 +137,8 @@ Source-of-truth files:
 - `.env.uat.example` — example environment for the UAT/pi4-style port layout
 - `docs/deployment/homelabsec-compose-stack.md` — full install, update, reverse-proxy, backup, and verification runbook
 - `docs/runbooks/macpro-proxmox-power-recovery.md` — Mac Pro AC-restore and Proxmox guest-autostart recovery runbook
+- `docs/operations/homelab-secret-management-strategy.md` — P0 strategy for vaulting, backing up, rotating, and recovering API keys, SSH keys, tokens, and other secrets without exposing raw values
+- `docs/operations/homelab-backup-strategy.md` — Thunderbluff-centred 3-2-1 backup strategy for homelab applications and control-plane state
 - `infra/proxmox/proxmox-host-access.yml` — Ansible IaC for the Proxmox `fayebot` account, key-only SSH, passwordless sudo, host access note, and removal of the former temporary direct-root key
 
 Quick reproduce command:
