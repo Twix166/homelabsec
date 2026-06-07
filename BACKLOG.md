@@ -35,10 +35,10 @@ Reference:
 - `docs/operations/secret-inventory-template.md`
 
 Deliver:
-- choose the primary human vault and automation secret format, with SOPS+age as the default automation recommendation
+- use Robert's existing Bitwarden EU account as the primary human/recovery vault and SOPS + age as the automation secret format
 - inventory high-value secrets by metadata only: owner, consumer, storage, rotation, recovery test, blast radius, and revocation path
-- migrate known high-value secrets out of ad-hoc `.env` files and loose key locations into the chosen vault/encrypted workflow
-- create and test encrypted backups for the vault/export, SOPS/age recovery material, backup repository passwords, and break-glass runbook
+- migrate known high-value secrets out of ad-hoc `.env` files and loose key locations into Bitwarden records, SOPS-encrypted files, or documented local materialization steps
+- create and test encrypted backups for the Bitwarden/export recovery path, SOPS/age recovery material, backup repository passwords, and break-glass runbook
 - rotate old, broad, or unclear-provenance credentials in staged batches
 - add HomelabSec posture checks later without collecting raw secret values
 
@@ -47,7 +47,7 @@ Safety rules:
 - report inventory coverage, freshness, rotation due dates, and recovery-test status only
 
 Next action:
-- choose the primary vault, then build the first non-secret inventory and migration checklist.
+- build the first non-secret inventory and migration checklist around Bitwarden EU plus SOPS/age.
 
 ### Operational P0: Thunderbluff 3-2-1 Backup Programme
 Priority: `P0`
@@ -72,7 +72,7 @@ Safety rules:
 - report presence, age, size, snapshot IDs, and restore-test status only; never expose backup contents or secrets
 
 Next action:
-- after the secret-management choice is made, obtain/verify Thunderbluff access and implement the first three jobs.
+- secret-management choice is made; next backup step, only after Robert explicitly asks to start backup implementation, is to obtain/verify Thunderbluff access and implement the first three jobs.
 
 ### Slice 1: Alert Routing
 Priority: `P0`

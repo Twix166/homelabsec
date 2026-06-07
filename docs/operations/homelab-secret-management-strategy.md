@@ -32,46 +32,49 @@ Do not store raw secret values in this repository, backlog files, issue bodies, 
 
 Use a password-manager/vault as the human-friendly source of truth, plus an automation-friendly encrypted secret distribution path.
 
-Recommended default:
+Decision:
 
-1. **Primary vault:** Bitwarden/Vaultwarden or 1Password for human-managed records and emergency access.
-2. **Automation secrets:** age/SOPS-encrypted files for machine-consumable secrets, decryptable only by designated host or operator keys.
+1. **Primary human/recovery vault:** Robert's existing Bitwarden EU account for human-managed records, emergency access, API keys, SSH key recovery copies, backup repository passwords, and break-glass notes.
+2. **Automation secrets:** SOPS + age encrypted files for machine-consumable secrets, decryptable only by designated host or operator keys.
 3. **Runtime materialization:** deploy scripts render `.env` files or service config on target hosts from encrypted sources; generated plaintext stays local, permission-restricted, and is not committed.
-4. **Break-glass recovery:** a small sealed/offline recovery bundle containing the minimum information needed to regain access to the vault, backup repositories, and core hosts.
+4. **Break-glass recovery:** a small sealed/offline recovery bundle containing the minimum information needed to regain access to Bitwarden, SOPS/age recipients, backup repositories, and core hosts.
+
+Vaultwarden is **not required for the initial strategy** because Robert already has Bitwarden EU. Add self-hosted Vaultwarden only if a later requirement justifies it, such as a local-only password-manager service, separate homelab vault tenancy, or avoiding hosted Bitwarden dependency. Until then, adding Vaultwarden would create another critical service to host, update, monitor, expose, and back up.
 
 Alternatives that can be chosen later:
 
+- Vaultwarden if a self-hosted Bitwarden-compatible vault becomes desirable.
 - HashiCorp Vault or OpenBao if dynamic secrets and service-to-service leasing become valuable.
 - KeePassXC if a simpler offline-first vault is preferred.
 - Synology/C2 or cloud KMS only as an integration layer, not as the only recovery mechanism.
 
 ### Automated secret access model
 
-Vaultwarden can support automated secret lookup through the Bitwarden-compatible CLI/API, but it should not be the only automation layer and it should not become a runtime dependency for every service.
+Bitwarden EU can support automated secret lookup through the Bitwarden CLI/API, but it should not be the only automation layer and it should not become a runtime dependency for every service.
 
 Recommended split:
 
-1. **Vaultwarden as human/recovery vault:** store high-value human-managed records, recovery copies, backup repository passwords, emergency notes, and source-of-truth metadata for API keys, SSH keys, service credentials, and break-glass material.
+1. **Bitwarden EU as human/recovery vault:** store high-value human-managed records, recovery copies, backup repository passwords, emergency notes, and source-of-truth metadata for API keys, SSH keys, service credentials, and break-glass material.
 2. **SOPS + age as automation distribution:** store machine-consumable secrets in encrypted files that can live in Git only when encrypted, decryptable by approved operator/host keys.
 3. **Local runtime materialization:** deployment scripts render `.env` files or service config on target hosts from encrypted sources; generated plaintext stays local, has restrictive permissions, and is excluded from Git/backups unless covered by the secret-backup policy.
-4. **Bootstrap credentials as managed secrets:** any machine account, Bitwarden CLI API credential, Vaultwarden session material, age identity, systemd credential, or local unlock file used by automation is itself a high-value secret with inventory, backup, rotation, and revocation requirements.
+4. **Bootstrap credentials as managed secrets:** any machine account, Bitwarden CLI API credential, Bitwarden session material, age identity, systemd credential, or local unlock file used by automation is itself a high-value secret with inventory, backup, rotation, and revocation requirements.
 
 Allowed automation patterns:
 
-- Faye or a deployment host may fetch a named secret from Vaultwarden during a controlled deploy, then write a restricted local runtime file or update an encrypted SOPS file.
+- Faye or a deployment host may fetch a named secret from Bitwarden during a controlled deploy, then write a restricted local runtime file or update an encrypted SOPS file.
 - Hosts may decrypt SOPS files with designated age identities during deployment or configuration rendering.
 - HomelabSec may check whether secret references, encrypted files, inventories, and recovery backups exist and are fresh, but must not collect or display raw values.
 
 Avoid as the default:
 
-- Services directly querying Vaultwarden on every startup or request, because a Vaultwarden outage, expired CLI session, or bootstrap-credential failure could stop unrelated services from recovering after a power event.
-- Giving every host broad Vaultwarden access when a narrow SOPS recipient or rendered local config is enough.
+- Services directly querying Bitwarden on every startup or request, because a Bitwarden outage, expired CLI session, or bootstrap-credential failure could stop unrelated services from recovering after a power event.
+- Giving every host broad Bitwarden access when a narrow SOPS recipient or rendered local config is enough.
 - Logging `bw get`, decrypted SOPS output, rendered `.env` files, Authorization headers, private keys, cookies, session tokens, or seed/recovery material.
 
 SSH-key handling:
 
 - Day-to-day automation should use per-host/per-purpose local SSH keys with strict file permissions and narrow authorized-key or sudo/API scope.
-- Vaultwarden should store recovery copies or metadata for important keys, not necessarily serve private keys for every connection.
+- Bitwarden should store recovery copies or metadata for important keys, not necessarily serve private keys for every connection.
 - Each SSH key should have inventory metadata for owner, target, allowed scope, backup/recovery path, rotation date, fingerprint, and revocation/removal path.
 
 ### Git boundary
@@ -204,10 +207,11 @@ Future HomelabSec slices can help manage this safely:
 
 ## Open decisions
 
-- Primary vault: Bitwarden/Vaultwarden, 1Password, KeePassXC, or another option?
-- Automation format: SOPS+age by default, or a server vault such as OpenBao/Vault?
-- Automated access: which hosts/users get Vaultwarden CLI/API access, and which should use only SOPS/age or rendered local config?
-- Bootstrap protection: where are Vaultwarden machine credentials, CLI session material, age identities, and unlock files stored, backed up, rotated, and revoked?
+- Primary vault: decided for initial rollout: Robert's existing Bitwarden EU account.
+- Automation format: decided for initial rollout: SOPS + age.
+- Vaultwarden: not needed initially; revisit only if a self-hosted Bitwarden-compatible vault becomes a deliberate requirement.
+- Automated access: which hosts/users get Bitwarden CLI/API access, and which should use only SOPS/age or rendered local config?
+- Bootstrap protection: where are Bitwarden machine credentials, CLI session material, age identities, and unlock files stored, backed up, rotated, and revoked?
 - Emergency access: who/where holds the break-glass recovery material?
 - Rotation policy: rotate all old/high-value secrets immediately after vault migration, or rotate in staged batches by system?
 - Offsite/offline target: encrypted cloud/object storage, rotated USB, separate NAS, or a hybrid?
