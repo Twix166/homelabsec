@@ -1,8 +1,0 @@
-# SOPS configuration for HomelabSec automation secrets.
-#
-# Only commit files that match the encrypted path rules below. Plaintext
-# runtime files are generated locally by scripts/secrets/render_sops_env.py and
-# must remain ignored.
-creation_rules:
-  - path_regex: ^secrets/sops/.*\.enc\.(json|yaml|yml)$
-    age: age16zlfacpnp7yszl9jxp8ua3t3dtvd9zed625qkt7cpmqvd7uht55qxfnmuf

@@ -19,12 +19,29 @@ edge/certs/tls.key
 discovery/raw/
 discovery/parsed/
 
-# Secrets
+# Secrets: zero-secret GitHub boundary
 .env
 *.env
 secrets/runtime/
 secrets/plaintext/
 secrets/tmp/
+secrets/sops/
+openbao/data/
+openbao/raft/
+openbao/snapshot*/
+openbao/backup*/
+openbao/token*/
+openbao/unseal*/
+openbao/recovery*/
+vaultwarden/data/
+vaultwarden/db/
+vaultwarden/export*/
+vaultwarden/backup*/
+vaultwarden/attachment*/
+*.enc.json
+*.enc.yaml
+*.enc.yml
+*.enc.env
 *.key
 *.pem
 *.p12
@@ -32,6 +49,10 @@ secrets/tmp/
 *.kdbx
 *.vault
 *bitwarden*export*
+*vaultwarden*export*
+*openbao*snapshot*
+*bao*token*
+*vault*token*
 
 # OS
 .DS_Store

@@ -1,49 +1,34 @@
 # HomelabSec secrets workflow
 
-This directory implements the current secret-management strategy:
+This repository now treats GitHub as a **zero-secret repository**:
 
-- **Bitwarden EU** is the human/recovery vault.
-- **SOPS + age** is the automation secret distribution layer.
-- **Rendered runtime files** are local-only and ignored by Git.
+- no plaintext secrets;
+- no SOPS-encrypted secret payloads;
+- no vault exports;
+- no OpenBao snapshots, tokens, unseal keys, recovery keys, or session files;
+- no Vaultwarden database/export files.
+
+Git may contain only non-secret metadata, templates, policy examples, runbooks, and validation scripts.
+
+## Target architecture
+
+- **Vaultwarden**: Robert-facing human/recovery vault for passwords, API keys, SSH-key recovery copies, break-glass notes, OpenBao recovery material, and vault/export backups.
+- **OpenBao**: automation/service secret broker for runtime secrets, narrowly scoped tokens, policies, short-lived credentials where practical, and audit logs.
+- **Local runtime materialization**: deployment jobs fetch from OpenBao or Vaultwarden during controlled operations and write restrictive host-local files, normally `0600`, outside Git.
 
 ## Layout
 
 - `inventory.example.json` — non-secret inventory metadata example.
-- `sops/*.enc.json` — encrypted machine-consumable secret bundles.
 - `runtime/` — local generated files; ignored and never committed.
-
-## First-time operator setup
-
-Faye now has local SOPS/age tooling installed and an age identity at the
-standard SOPS path. The private identity is **not** in this repo. Store a
-recovery copy in Bitwarden EU and the offline break-glass bundle before relying
-on it for disaster recovery.
-
-Useful commands:
-
-```bash
-# Confirm Bitwarden CLI points at Bitwarden EU.
-bw config server
-
-# Login/unlock interactively when Robert is present.
-bw login
-bw unlock
-
-# Verify encrypted sample can decrypt on Faye.
-python3 scripts/secrets/validate_secrets_management.py
-
-# Render a local env file from an encrypted bundle.
-python3 scripts/secrets/render_sops_env.py \
-  secrets/sops/homelabsec.sample.enc.json \
-  secrets/runtime/homelabsec.sample.env
-```
+- `openbao/`, `vaultwarden/`, `exports/`, `snapshots/`, and `backups/` — sensitive local-only working directories if created; ignored by Git.
 
 ## Rules
 
-- Never commit `.env`, `*.env`, age private identities, Bitwarden session files,
-  vault exports, private keys, API tokens, cookies, seeds, macaroons, or backup
-  repository passwords.
-- Commit only metadata or SOPS-encrypted files.
-- Avoid logging decrypted SOPS output. Render to files with `0600` permissions.
-- Store recovery copies and emergency notes in Bitwarden EU/offline break-glass,
-  not in GitHub or Telegram.
+- Never commit `.env`, `*.env`, private keys, vault tokens, unseal/recovery keys, Bitwarden/Vaultwarden session files, vault exports, OpenBao snapshots, cookies, seeds, macaroons, or backup repository passwords.
+- Never commit SOPS encrypted secret files. Encrypted-at-rest is not enough for this repo boundary.
+- Store real values in Vaultwarden/OpenBao only, with backups and break-glass recovery outside GitHub.
+- Validation must pass before commits/pushes:
+
+```bash
+python3 scripts/secrets/validate_no_git_secrets.py
+```
