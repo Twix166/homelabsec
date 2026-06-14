@@ -292,4 +292,31 @@ def test_auth_and_admin_pages_exist():
     assert 'id="user-list"' in admin_html
     assert 'id="admin-status"' in admin_html
     assert 'id="page-nav"' in admin_html
+    assert 'href="/styles.css?v=admin-links-20260604"' in admin_html
+    assert 'src="/auth.js?v=admin-links-20260604"' in admin_html
+    assert 'src="/admin.js?v=admin-links-20260604"' in admin_html
+    assert 'role="tablist"' in admin_html
+    assert 'id="admin-tab-status"' in admin_html
+    assert 'id="admin-tab-enrichment"' in admin_html
+    assert 'id="admin-tab-sources"' in admin_html
+    assert 'id="admin-tab-users"' in admin_html
+    assert 'id="admin-panel-status"' in admin_html
+    assert 'id="admin-panel-enrichment"' in admin_html
+    assert 'id="admin-panel-sources"' in admin_html
+    assert 'id="admin-panel-users"' in admin_html
+    assert 'aria-controls="admin-panel-status"' in admin_html
+    assert 'aria-labelledby="admin-tab-users"' in admin_html
+    assert 'data-admin-tab-target="users"' in admin_html
+    assert 'function activateAdminTab(tabName, updateHash = true)' in admin_script
+    assert 'function initializeAdminTabs()' in admin_script
+    assert 'event.key === "ArrowRight"' in admin_script
+    assert 'event.key === "ArrowLeft"' in admin_script
     assert 'apiJson("/api/admin/status")' in admin_script
+    assert 'href: `${origin}/api/health`' in admin_script
+    assert 'href: "https://prometheus.home.robertbalm.com/"' in admin_script
+    assert 'href: "https://grafana.home.robertbalm.com/"' in admin_script
+    assert 'href: "https://alertmanager.home.robertbalm.com/"' in admin_script
+    assert 'http://${monitoringHost}' not in admin_script
+    assert '127.0.0.1:9090' not in admin_script
+    assert '127.0.0.1:3001' not in admin_script
+    assert '127.0.0.1:9093' not in admin_script

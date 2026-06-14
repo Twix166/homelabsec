@@ -22,6 +22,16 @@ discovery/parsed/
 # Secrets
 .env
 *.env
+secrets/runtime/
+secrets/plaintext/
+secrets/tmp/
+*.key
+*.pem
+*.p12
+*.pfx
+*.kdbx
+*.vault
+*bitwarden*export*
 
 # OS
 .DS_Store

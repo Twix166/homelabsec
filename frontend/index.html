@@ -60,6 +60,61 @@
 
         <section class="panel panel-wide">
           <div class="section-heading">
+            <div>
+              <h2>Exposure map</h2>
+              <p>UAT-visible collector-backed view of preferred routes, DNS, launcher hygiene, and generated exposure findings.</p>
+            </div>
+            <div id="exposure-summary" class="exposure-summary"></div>
+          </div>
+          <div id="exposure-status-panel" class="exposure-status-panel">
+            <div>
+              <p class="eyebrow">Exposure readiness</p>
+              <strong id="exposure-readiness">Loading collector status</strong>
+              <p id="exposure-readiness-detail">Waiting for route, DNS, launcher, and finding contracts.</p>
+            </div>
+            <div class="exposure-status-meta">
+              <span>Generated</span>
+              <strong id="exposure-last-generated">-</strong>
+            </div>
+          </div>
+          <div id="exposure-coverage-grid" class="exposure-coverage-grid"></div>
+          <div id="exposure-severity-summary" class="severity-summary"></div>
+          <div class="exposure-grid">
+            <div>
+              <h3>Routes</h3>
+              <div id="exposure-routes" class="stack-list compact-list"></div>
+            </div>
+            <div>
+              <h3>DNS</h3>
+              <div id="exposure-dns" class="stack-list compact-list"></div>
+            </div>
+            <div>
+              <h3>Launcher links</h3>
+              <div id="exposure-launcher-links" class="stack-list compact-list"></div>
+            </div>
+            <div>
+              <h3>Exposure findings</h3>
+              <div id="exposure-findings" class="stack-list compact-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="section-heading">
+            <div>
+              <h2>SecOps remediation board</h2>
+              <p>Security findings paired with operator instructions, so Faye can move from evidence to DevOps remediation.</p>
+            </div>
+            <div class="inventory-controls">
+              <div class="asset-count"><span id="finding-count">0</span> findings</div>
+              <div class="asset-count"><span id="remediation-count">0</span> queued instructions</div>
+            </div>
+          </div>
+          <div id="findings-board" class="findings-board"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="section-heading">
             <h2 id="detail-title">Detail view</h2>
             <p id="detail-description">Click a summary card to list the underlying items.</p>
           </div>
@@ -107,6 +162,47 @@
     <template id="empty-state-template">
       <div class="empty-state">No data available.</div>
     </template>
+
+    <div id="instruction-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-close-instruction-modal></div>
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="instruction-modal-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Operator instruction</p>
+            <h2 id="instruction-modal-title">Tell Faye what to do next</h2>
+            <p id="instruction-finding-title">Select a finding to queue remediation instructions.</p>
+          </div>
+          <button class="filter-button" type="button" data-close-instruction-modal>Close</button>
+        </div>
+        <form id="instruction-form" class="auth-form">
+          <label>
+            Intent
+            <select id="instruction-intent" name="intent">
+              <option value="fix">Fix</option>
+              <option value="investigate">Investigate</option>
+              <option value="defer">Defer</option>
+              <option value="accept_risk">Accept risk</option>
+              <option value="note">Note</option>
+            </select>
+          </label>
+          <label>
+            Priority
+            <select id="instruction-priority" name="priority">
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+          <label>
+            Instructions
+            <textarea id="instruction-text" name="instruction_text" rows="5" placeholder="Example: Faye, fix this route, verify the HTTPS dashboard URL, and report the change back in Telegram." required></textarea>
+          </label>
+          <div id="instruction-error" class="auth-error" hidden></div>
+          <button class="refresh-button" type="submit">Queue instruction</button>
+        </form>
+      </section>
+    </div>
 
     <script src="/auth.js"></script>
     <script src="/app.js"></script>

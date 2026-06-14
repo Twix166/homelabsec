@@ -1,0 +1,20 @@
+---
+# Public key used by Faye/Hermes for Proxmox host automation via the locked
+# fayebot account. The matching private key is intentionally not stored here.
+proxmox_fayebot_authorized_key: >-
+  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINhEy+K81tkjMbHWPW+0tsHHQWpBJLd9g9BwfoVi3b2f fayebot-to-proxmox-macpro-10.0.0.84
+
+# Temporary direct-root public key used during the transition. The playbook
+# ensures this key is absent from root's authorized_keys after fayebot access is
+# in place and sudo has been validated.
+proxmox_remove_root_authorized_keys:
+  - >-
+    ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICl4Wf0y8Tn3FoOCI4DhqOpsyuyqXhvXlHcbHxbdxjGt faye-to-proxmox-macpro-10.0.0.84
+
+proxmox_fayebot_user: fayebot
+proxmox_fayebot_groups:
+  - sudo
+  - users
+
+proxmox_fayebot_sudoers_path: /etc/sudoers.d/90-fayebot
+proxmox_fayebot_readme_path: /etc/fayebot-proxmox-access.README

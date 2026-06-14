@@ -23,6 +23,90 @@ Use it as the working queue. `TODO.md` remains the broader status and historical
 
 ## Current Prioritized Queue
 
+### Operational P0: Secret Management Programme
+Priority: `P0`
+Status: `in progress`
+
+Goal:
+- Bring API keys, SSH keys, tokens, certificates, recovery material, and service credentials under deliberate management before broad backup implementation.
+
+Reference:
+- `docs/operations/homelab-secret-management-strategy.md`
+- `docs/operations/secret-management-runbook.md`
+- `docs/operations/secret-inventory-template.md`
+- `secrets/README.md`
+
+Delivered so far:
+- installed Faye-side `age`, `sops`, and Bitwarden CLI tooling with Bitwarden CLI pointed at Bitwarden EU
+- generated Faye's initial SOPS age recipient and wired it into `.sops.yaml`
+- added an encrypted sample secret bundle, metadata-only inventory example, guardrail validator, and local env renderer
+
+Deliver:
+- use Robert's existing Bitwarden EU account as the primary human/recovery vault and SOPS + age as the automation secret format
+- inventory high-value secrets by metadata only: owner, consumer, storage, rotation, recovery test, blast radius, and revocation path
+- migrate known high-value secrets out of ad-hoc `.env` files and loose key locations into Bitwarden records, SOPS-encrypted files, or documented local materialization steps
+- create and test encrypted backups for the Bitwarden/export recovery path, SOPS/age recovery material, backup repository passwords, and break-glass runbook
+- rotate old, broad, or unclear-provenance credentials in staged batches
+- add HomelabSec posture checks later without collecting raw secret values
+
+Safety rules:
+- never put plaintext private keys, tokens, passwords, seeds, macaroons, backup repository passwords, rendered `.env` files, or vault exports in GitHub, backlog files, dashboards, alerts, logs, or Telegram
+- report inventory coverage, freshness, rotation due dates, and recovery-test status only
+
+Next action:
+- with Robert present, login/unlock Bitwarden EU, create recovery records for Faye's SOPS age identity, and start migrating the first real HomelabSec runtime secrets into encrypted SOPS bundles.
+
+### Operational P0: Self-Hosted Git Migration Programme
+Priority: `P0`
+Status: `planned`
+
+Goal:
+- Move selected repositories from GitHub-only hosting to a self-hosted Git service without losing mirrors, backups, recovery options, or public-discovery benefits where they matter.
+
+Reference:
+- `docs/operations/self-hosted-git-migration-strategy.md`
+
+Deliver:
+- choose the self-hosted Git platform, with Forgejo as the current recommended pilot
+- deploy the platform behind the homelab HTTPS/DNS/certificate chain with SSH Git access
+- implement backup and restore drills before moving operational repositories
+- migrate low-risk pilot repositories first, then active personal repositories, then operational/private repositories
+- keep GitHub mirrors or fallback remotes until restore and rollback are proven
+- defer high-impact autonomous/financial repositories until explicit go/no-go after lower-risk migration success
+
+Safety rules:
+- do not delete or archive GitHub repositories during the pilot phase
+- do not print or commit GitHub/Forgejo tokens, deploy keys, webhook secrets, Actions secrets, or private SSH keys
+- do not make self-hosted Git the only copy of an important repository until backup and restore are verified
+
+Next action:
+- confirm Forgejo as the pilot platform or choose an alternative, then write/deploy the first LAN-only Forgejo runbook and test it with a Tier 0 repository.
+
+### Operational P0: Thunderbluff 3-2-1 Backup Programme
+Priority: `P0`
+Status: `planned`
+
+Goal:
+- Make Thunderbluff the primary encrypted backup landing zone, then complete a 3-2-1 posture with an independent/offsite or offline third copy.
+
+Reference:
+- `docs/operations/homelab-backup-strategy.md`
+
+Deliver:
+- confirm Thunderbluff backup share/path, access, capacity, snapshot/immutability support, and restricted backup users/keys
+- inventory all important homelab apps and classify by RPO/RTO/data criticality
+- implement the first three monitored jobs: Faye/Hermes runtime, HomelabSec Postgres/manifests, and proxy/DNS/certificate control-plane state
+- extend to Home Assistant, Trading Team, WordPress, media/document apps, monitoring, Proxmox guests, and Lightning/Umbrel critical state
+- replicate encrypted backups to a separate/offsite/offline third copy and run quarterly restore drills
+
+Safety rules:
+- do not start implementation until Robert explicitly asks; this is currently a planning/backlog item
+- application-aware database dumps before raw volume copies
+- report presence, age, size, snapshot IDs, and restore-test status only; never expose backup contents or secrets
+
+Next action:
+- secret-management choice is made; next backup step, only after Robert explicitly asks to start backup implementation, is to obtain/verify Thunderbluff access and implement the first three jobs.
+
 ### Slice 1: Alert Routing
 Priority: `P0`
 Status: `done`
@@ -176,6 +260,59 @@ Next priority:
 - richer alert delivery validation
 - backup retention policy and off-host storage
 
+### Slice 11: Exposure Map Dashboard
+Priority: `P0`
+Status: `in progress`
+
+Goal:
+- Turn HomelabSec into an operator-facing exposure map by correlating Nmap observations with HCM targets/certificates, NPM routes, Heimdall launcher links, and DNS answers.
+
+Reference:
+- `docs/threat-exposure-map-and-dashboard-spec.md`
+
+Deliver:
+- add route, DNS, launcher-link, and exposure-finding data models
+- add read-only exposure summary/routes/DNS/launcher/findings APIs
+- add secret-safe HCM and NPM collectors
+- add Heimdall hygiene checks for raw-IP or legacy links where a preferred HTTPS route exists
+- add DNS alignment checks that distinguish candidate records from production failures
+- add dashboard cards/tables for control-plane risk, raw service exposure, TLS status, unknown services, and accepted findings
+
+Delivered so far:
+- Added migration-backed exposure tables for routes, DNS records, launcher links, and exposure findings.
+- Added authenticated read-only API skeletons for `/exposure/summary`, `/exposure/routes`, `/exposure/dns`, `/exposure/launcher-links`, and `/exposure/findings`.
+- Added a dashboard exposure-map panel and frontend/API contract tests.
+
+Remaining:
+- Add unit tests for route classifiers and finding severity rules once collectors/classifiers are introduced.
+- Add fixture-based integration tests joining Nmap, HCM, NPM, Heimdall, and DNS payloads.
+- Add secret-safe HCM, NPM, Heimdall, and DNS collectors.
+- Add dashboard tables/cards for correlated control-plane risk, raw service exposure, TLS status, unknown services, and accepted findings.
+
+### Slice 12: Sandfly Security Finding Integration
+Priority: `P2`
+Status: `parked`
+
+Goal:
+- Add Sandfly support as a future enrichment/source-of-findings integration for HomelabSec, after the core exposure map work is stable.
+
+Context:
+- Public Sandfly tooling and docs appear sufficient to build the integration if a licensed Sandfly server is available.
+- Expected integration points include API authentication, Sandfly-managed host inventory, check listing, scan launch, ad-hoc IP range or SSH credential scans, result retrieval, and mapping Sandfly alerts/findings into HomelabSec findings/remediation surfaces.
+- This is deliberately not a current implementation item.
+
+Deliver later:
+- document required Sandfly server/API configuration and secret handling
+- add a read-only Sandfly collector for hosts, checks, scans, and findings
+- map Sandfly severity/status/remediation into HomelabSec exposure findings without breaking existing finding shapes
+- add opt-in scan launch controls with safe defaults and clear operator confirmation
+- add fixture-backed tests using sanitized Sandfly API payloads
+
+Verification later:
+- unit tests for Sandfly payload parsing and severity/status mapping
+- integration tests with mocked Sandfly API responses
+- dashboard contract tests for Sandfly-origin findings
+
 ## Suggested Execution Order
 
 1. Slice 1: Alert Routing
@@ -188,6 +325,10 @@ Next priority:
 8. Slice 8: DB Migration Discipline
 9. Slice 9: Backup And Restore Drill
 10. Slice 10: Admin UX Improvements
+11. Operational P0: Secret Management Programme
+12. Operational P0: Thunderbluff 3-2-1 Backup Programme
+13. Slice 11: Exposure Map Dashboard
+14. Slice 12: Sandfly Security Finding Integration, only after a Sandfly server/API path is selected
 
 ## Parking Lot
 
@@ -199,3 +340,4 @@ These are valid ideas, but not current execution priorities:
 - multi-node deployment support
 - replacing host-network scheduler design
 - major frontend redesign
+- Sandfly support until the core exposure map is stable and Robert decides to connect a licensed Sandfly server

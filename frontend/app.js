@@ -5,6 +5,12 @@ const endpoints = {
   assets: "/api/assets",
   observations: "/api/observations",
   fingerprints: "/api/fingerprints",
+  findings: "/api/findings",
+  exposureSummary: "/api/exposure/summary",
+  exposureRoutes: "/api/exposure/routes",
+  exposureDns: "/api/exposure/dns",
+  exposureLauncherLinks: "/api/exposure/launcher-links",
+  exposureFindings: "/api/exposure/findings",
   adminStatus: "/api/admin/status",
 };
 
@@ -22,6 +28,26 @@ const elements = {
   detailTitle: document.getElementById("detail-title"),
   detailDescription: document.getElementById("detail-description"),
   detailList: document.getElementById("detail-list"),
+  findingsBoard: document.getElementById("findings-board"),
+  exposureSummary: document.getElementById("exposure-summary"),
+  exposureReadiness: document.getElementById("exposure-readiness"),
+  exposureReadinessDetail: document.getElementById("exposure-readiness-detail"),
+  exposureLastGenerated: document.getElementById("exposure-last-generated"),
+  exposureCoverageGrid: document.getElementById("exposure-coverage-grid"),
+  exposureSeveritySummary: document.getElementById("exposure-severity-summary"),
+  exposureRoutes: document.getElementById("exposure-routes"),
+  exposureDns: document.getElementById("exposure-dns"),
+  exposureLauncherLinks: document.getElementById("exposure-launcher-links"),
+  exposureFindings: document.getElementById("exposure-findings"),
+  findingCount: document.getElementById("finding-count"),
+  remediationCount: document.getElementById("remediation-count"),
+  instructionModal: document.getElementById("instruction-modal"),
+  instructionForm: document.getElementById("instruction-form"),
+  instructionFindingTitle: document.getElementById("instruction-finding-title"),
+  instructionIntent: document.getElementById("instruction-intent"),
+  instructionPriority: document.getElementById("instruction-priority"),
+  instructionText: document.getElementById("instruction-text"),
+  instructionError: document.getElementById("instruction-error"),
   assetCount: document.getElementById("asset-count"),
   assetsTable: document.getElementById("assets-table"),
   filterAssetsAll: document.getElementById("filter-assets-all"),
@@ -39,6 +65,15 @@ const dashboardState = {
   observations: [],
   fingerprints: [],
   changes: [],
+  findings: [],
+  exposure: {
+    summary: null,
+    routes: [],
+    dnsRecords: [],
+    launcherLinks: [],
+    findings: [],
+  },
+  selectedFindingId: null,
   notableAssetIds: new Set(),
   notableReasonsByAssetId: new Map(),
   recentChangeByAssetId: new Map(),
@@ -166,6 +201,310 @@ function severityClass(severity) {
     return "";
   }
   return String(severity).toLowerCase();
+}
+
+function findingById(findingId) {
+  return dashboardState.findings.find((finding) => finding.finding_id === findingId) || null;
+}
+
+function evidenceSummary(evidence) {
+  if (!evidence) {
+    return "No structured evidence captured yet.";
+  }
+  if (typeof evidence === "string") {
+    return evidence;
+  }
+  return Object.entries(evidence)
+    .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : value}`)
+    .join(" · ");
+}
+
+function renderFindingsBoard() {
+  elements.findingCount.textContent = dashboardState.findings.length;
+  const queuedCount = dashboardState.findings.reduce((total, finding) => total + (finding.instruction_count || 0), 0);
+  elements.remediationCount.textContent = queuedCount;
+
+  if (!dashboardState.findings.length) {
+    setEmptyState(elements.findingsBoard, "No active findings are available yet.");
+    return;
+  }
+
+  elements.findingsBoard.innerHTML = dashboardState.findings
+    .map((finding) => {
+      const latest = finding.latest_instruction;
+      return `
+        <article class="finding-card">
+          <div class="list-topline">
+            <div>
+              <div class="list-title">${escapeHtml(finding.title)}</div>
+              <div class="list-meta">
+                <span>${escapeHtml(finding.preferred_name || "Unnamed asset")}</span>
+                <span>${escapeHtml(formatDate(finding.created_at))}</span>
+              </div>
+            </div>
+            <span class="pill severity-${escapeHtml(severityClass(finding.severity))}">${escapeHtml(finding.severity || "unknown")}</span>
+          </div>
+          <p>${escapeHtml(finding.description || "No description captured.")}</p>
+          <div class="finding-evidence mono">${escapeHtml(evidenceSummary(finding.evidence))}</div>
+          <div class="remediation-block">
+            <strong>Recommended action</strong>
+            <p>${escapeHtml(finding.recommended_action || "No remediation recommendation captured yet.")}</p>
+          </div>
+          <div class="list-meta">
+            <span>${escapeHtml(formatConfidence(finding.confidence))} confidence</span>
+            <span>${escapeHtml(finding.instruction_count || 0)} instruction(s)</span>
+            ${latest ? `<span>Latest: ${escapeHtml(latest.intent)} / ${escapeHtml(latest.priority)}</span>` : "<span>No instructions queued</span>"}
+          </div>
+          ${latest ? `<blockquote class="latest-instruction">${escapeHtml(latest.instruction_text)}</blockquote>` : ""}
+          <button class="refresh-button finding-instruction-button" type="button" data-finding-id="${escapeHtml(finding.finding_id)}">Add instruction</button>
+        </article>
+      `;
+    })
+    .join("");
+
+  for (const button of elements.findingsBoard.querySelectorAll(".finding-instruction-button")) {
+    button.addEventListener("click", () => openInstructionModal(button.dataset.findingId));
+  }
+}
+
+function renderCompactCards(container, items, renderItem, emptyMessage) {
+  if (!items.length) {
+    setEmptyState(container, emptyMessage);
+    return;
+  }
+  container.innerHTML = items.map(renderItem).join("");
+}
+
+function exposureSummaryCount(summary, key) {
+  const value = summary?.[key];
+  return typeof value === "number" ? value : 0;
+}
+
+function exposureReadiness(summary) {
+  const routes = exposureSummaryCount(summary, "routes");
+  const dnsRecords = exposureSummaryCount(summary, "dns_records");
+  const launcherLinks = exposureSummaryCount(summary, "launcher_links");
+  const findings = exposureSummaryCount(summary, "findings");
+
+  if (!summary || !summary.generated_at) {
+    return {
+      label: "collector coverage unavailable",
+      detail: "Exposure contracts loaded, but no generated timestamp is available yet. Run the collectors/correlation job and redeploy before UAT sign-off.",
+      className: "exposure-status-warning",
+    };
+  }
+
+  if (routes && dnsRecords && launcherLinks) {
+    return {
+      label: findings ? "open exposure findings" : "collector-backed exposure map ready",
+      detail: findings
+        ? "Collectors are populated and correlation found open items to review before treating routes as clean."
+        : "Routes, DNS, and launcher links are populated; no open exposure findings are reported by the current correlation pass.",
+      className: findings ? "exposure-status-warning" : "exposure-status-ok",
+    };
+  }
+
+  return {
+    label: "collector coverage incomplete",
+    detail: "At least one source has not produced data yet. UAT can verify the panel, but route hygiene is not complete until routes, DNS, and launcher links are all populated.",
+    className: "exposure-status-warning",
+  };
+}
+
+function renderExposureStatus(summary) {
+  const readiness = exposureReadiness(summary);
+  elements.exposureReadiness.textContent = readiness.label;
+  elements.exposureReadinessDetail.textContent = readiness.detail;
+  elements.exposureLastGenerated.textContent = formatDate(summary?.generated_at);
+  elements.exposureReadiness.className = readiness.className;
+}
+
+function renderExposureCoverage(summary) {
+  const coverageItems = [
+    ["Routes", "routes", "Preferred hostnames and NPM/HCM backend targets"],
+    ["DNS", "dns_records", "Resolved or planned records for exposed services"],
+    ["Launcher", "launcher_links", "Heimdall links checked for raw IP / raw HTTP hygiene"],
+    ["Findings", "findings", "Generated exposure issues from the latest correlation pass"],
+  ];
+
+  elements.exposureCoverageGrid.innerHTML = coverageItems
+    .map(([label, key, detail]) => {
+      const count = exposureSummaryCount(summary, key);
+      const state = count > 0 ? "available" : "missing";
+      return `
+        <div class="exposure-coverage-card ${state}">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(count)}</strong>
+          <p>${escapeHtml(detail)}</p>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderExposureSeveritySummary(summary) {
+  const severities = summary?.open_findings_by_severity || {};
+  const ordered = ["critical", "high", "medium", "low", "info"];
+  const rendered = ordered
+    .filter((severity) => severities[severity])
+    .map((severity) => `<span class="pill severity-${escapeHtml(severity)}">${escapeHtml(severity)}: ${escapeHtml(severities[severity])}</span>`)
+    .join("");
+
+  elements.exposureSeveritySummary.innerHTML = rendered || '<span class="muted-cell">No open exposure findings in the latest correlation pass.</span>';
+}
+
+function renderExposureMap() {
+  const summary = dashboardState.exposure.summary || {};
+  const severitySummary = Object.entries(summary.open_findings_by_severity || {})
+    .map(([severity, count]) => `${severity}: ${count}`)
+    .join(" · ") || "no open findings";
+
+  elements.exposureSummary.innerHTML = `
+    <div class="list-meta">
+      <span>${escapeHtml(summary.routes ?? 0)} routes</span>
+      <span>${escapeHtml(summary.dns_records ?? 0)} DNS records</span>
+      <span>${escapeHtml(summary.launcher_links ?? 0)} launcher links</span>
+      <span>${escapeHtml(summary.findings ?? 0)} findings</span>
+    </div>
+    <div class="list-meta mono">${escapeHtml(severitySummary)}</div>
+  `;
+  renderExposureStatus(summary);
+  renderExposureCoverage(summary);
+  renderExposureSeveritySummary(summary);
+
+  renderCompactCards(
+    elements.exposureRoutes,
+    dashboardState.exposure.routes,
+    (route) => `
+      <article class="list-card compact-card">
+        <div class="list-topline">
+          <div class="list-title">${escapeHtml(route.domain)}</div>
+          <span class="pill">${escapeHtml(route.tls_status || route.certificate_status || "route")}</span>
+        </div>
+        <div class="list-meta">
+          <span>${escapeHtml(route.scheme || "-")}</span>
+          <span>${escapeHtml(route.upstream_host || "-")}${route.upstream_port ? `:${escapeHtml(route.upstream_port)}` : ""}</span>
+          <span>${route.force_ssl ? "force SSL" : "no force SSL"}</span>
+        </div>
+      </article>
+    `,
+    "No exposure routes collected yet."
+  );
+
+  renderCompactCards(
+    elements.exposureDns,
+    dashboardState.exposure.dnsRecords,
+    (record) => `
+      <article class="list-card compact-card">
+        <div class="list-topline">
+          <div class="list-title">${escapeHtml(record.hostname)}</div>
+          <span class="pill">${escapeHtml(record.status)}</span>
+        </div>
+        <div class="list-meta">
+          <span>${escapeHtml(record.record_type)}</span>
+          <span>${escapeHtml(record.record_value)}</span>
+          <span>${escapeHtml(record.resolver)}</span>
+        </div>
+      </article>
+    `,
+    "No DNS exposure records collected yet."
+  );
+
+  renderCompactCards(
+    elements.exposureLauncherLinks,
+    dashboardState.exposure.launcherLinks,
+    (link) => `
+      <article class="list-card compact-card">
+        <div class="list-topline">
+          <div class="list-title">${escapeHtml(link.title)}</div>
+          <span class="pill">${escapeHtml(link.link_kind)}</span>
+        </div>
+        <div class="list-meta">
+          <span>${escapeHtml(link.hygiene_status)}</span>
+          <span>${escapeHtml(link.preferred_route_domain || link.normalized_host || "-")}</span>
+        </div>
+        <div class="list-meta mono">${escapeHtml(link.url)}</div>
+      </article>
+    `,
+    "No launcher-link exposure records collected yet."
+  );
+
+  renderCompactCards(
+    elements.exposureFindings,
+    dashboardState.exposure.findings,
+    (finding) => `
+      <article class="list-card compact-card">
+        <div class="list-topline">
+          <div class="list-title">${escapeHtml(finding.title)}</div>
+          <span class="pill severity-${escapeHtml(severityClass(finding.severity))}">${escapeHtml(finding.severity)}</span>
+        </div>
+        <p>${escapeHtml(finding.description)}</p>
+        <div class="list-meta">
+          <span>${escapeHtml(finding.finding_type)}</span>
+          <span>${escapeHtml(finding.status)}</span>
+        </div>
+      </article>
+    `,
+    "No exposure findings collected yet."
+  );
+}
+
+function openInstructionModal(findingId) {
+  const finding = findingById(findingId);
+  if (!finding) {
+    return;
+  }
+  dashboardState.selectedFindingId = findingId;
+  elements.instructionFindingTitle.textContent = finding.title;
+  elements.instructionIntent.value = "fix";
+  elements.instructionPriority.value = finding.severity === "critical" || finding.severity === "high" ? "high" : "normal";
+  elements.instructionText.value = finding.recommended_action || "";
+  elements.instructionError.hidden = true;
+  elements.instructionError.textContent = "";
+  elements.instructionModal.hidden = false;
+  elements.instructionText.focus();
+}
+
+function closeInstructionModal() {
+  dashboardState.selectedFindingId = null;
+  elements.instructionModal.hidden = true;
+}
+
+async function submitFindingInstruction(event) {
+  event.preventDefault();
+  const findingId = dashboardState.selectedFindingId;
+  if (!findingId) {
+    return;
+  }
+
+  const instructionText = elements.instructionText.value.trim();
+  if (!instructionText) {
+    elements.instructionError.textContent = "Instruction text is required.";
+    elements.instructionError.hidden = false;
+    return;
+  }
+
+  try {
+    const response = await fetch(`${endpoints.findings}/${encodeURIComponent(findingId)}/instructions`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction_text: instructionText,
+        intent: elements.instructionIntent.value,
+        priority: elements.instructionPriority.value,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || `${response.status} ${response.statusText}`);
+    }
+    closeInstructionModal();
+    await loadDashboard();
+  } catch (error) {
+    elements.instructionError.textContent = error.message;
+    elements.instructionError.hidden = false;
+  }
 }
 
 function filterAssets(assets) {
@@ -399,18 +738,45 @@ async function loadDashboard() {
   elements.refreshButton.textContent = "Refreshing";
 
   try {
-    const [health, summary, daily, assets, observations, fingerprints] = await Promise.all([
+    const [
+      health,
+      summary,
+      daily,
+      assets,
+      observations,
+      fingerprints,
+      findings,
+      exposureSummary,
+      exposureRoutes,
+      exposureDns,
+      exposureLauncherLinks,
+      exposureFindings,
+    ] = await Promise.all([
       fetchJson(endpoints.health),
       fetchJson(endpoints.summary),
       fetchJson(endpoints.daily),
       fetchJson(endpoints.assets),
       fetchJson(endpoints.observations),
       fetchJson(endpoints.fingerprints),
+      fetchJson(endpoints.findings),
+      fetchJson(endpoints.exposureSummary),
+      fetchJson(endpoints.exposureRoutes),
+      fetchJson(endpoints.exposureDns),
+      fetchJson(endpoints.exposureLauncherLinks),
+      fetchJson(endpoints.exposureFindings),
     ]);
 
     dashboardState.assets = assets.assets || [];
     dashboardState.observations = observations.observations || [];
     dashboardState.fingerprints = fingerprints.fingerprints || [];
+    dashboardState.findings = findings.findings || [];
+    dashboardState.exposure = {
+      summary: exposureSummary,
+      routes: exposureRoutes.routes || [],
+      dnsRecords: exposureDns.dns_records || [],
+      launcherLinks: exposureLauncherLinks.launcher_links || [],
+      findings: exposureFindings.findings || [],
+    };
     dashboardState.changes = daily.recent_changes || [];
     dashboardState.notableAssetIds = new Set((daily.notable_assets || []).map((asset) => asset.asset_id));
     dashboardState.notableReasonsByAssetId = new Map(
@@ -428,6 +794,8 @@ async function loadDashboard() {
 
     updateAssetFilterButtons();
     updateSortButtons();
+    renderFindingsBoard();
+    renderExposureMap();
     renderAssetsTable();
     renderSummaryDetail(dashboardState.activeSummary);
   } catch (error) {
@@ -436,8 +804,14 @@ async function loadDashboard() {
     elements.detailTitle.textContent = "Detail view";
     elements.detailDescription.textContent = "Click a summary card to list the underlying items.";
     setEmptyState(elements.detailList, `Failed to load detail data: ${error.message}`);
-    setEmptyState(elements.adminStatus, `Failed to load admin status: ${error.message}`);
-    setEmptyState(elements.recentChanges, `Failed to load dashboard: ${error.message}`);
+    setEmptyState(elements.findingsBoard, `Failed to load findings: ${error.message}`);
+    setEmptyState(elements.exposureRoutes, `Failed to load exposure data: ${error.message}`);
+    setEmptyState(elements.exposureDns, "Exposure data unavailable.");
+    setEmptyState(elements.exposureLauncherLinks, "Exposure data unavailable.");
+    setEmptyState(elements.exposureFindings, "Exposure data unavailable.");
+    renderExposureStatus(null);
+    renderExposureCoverage(null);
+    renderExposureSeveritySummary(null);
     renderAssetsTable();
   } finally {
     elements.refreshButton.disabled = false;
@@ -495,6 +869,12 @@ elements.filterConfidenceBlue.addEventListener("click", () => {
   renderAssetsTable();
 });
 
+elements.instructionForm.addEventListener("submit", submitFindingInstruction);
+
+for (const closeButton of document.querySelectorAll("[data-close-instruction-modal]")) {
+  closeButton.addEventListener("click", closeInstructionModal);
+}
+
 for (const button of elements.sortButtons) {
   button.addEventListener("click", () => {
     const { sortKey } = button.dataset;
@@ -525,6 +905,12 @@ initDashboard().catch((error) => {
   elements.healthStatus.textContent = "error";
   elements.reportGenerated.textContent = "-";
   setEmptyState(elements.detailList, `Failed to load dashboard: ${error.message}`);
-  setEmptyState(elements.adminStatus, `Failed to load admin status: ${error.message}`);
-  setEmptyState(elements.recentChanges, `Failed to load dashboard: ${error.message}`);
+  setEmptyState(elements.findingsBoard, `Failed to load findings: ${error.message}`);
+  setEmptyState(elements.exposureRoutes, `Failed to load exposure data: ${error.message}`);
+  setEmptyState(elements.exposureDns, "Exposure data unavailable.");
+  setEmptyState(elements.exposureLauncherLinks, "Exposure data unavailable.");
+  setEmptyState(elements.exposureFindings, "Exposure data unavailable.");
+  renderExposureStatus(null);
+  renderExposureCoverage(null);
+  renderExposureSeveritySummary(null);
 });

@@ -4,6 +4,9 @@ const userList = document.getElementById("user-list");
 const createUserForm = document.getElementById("create-user-form");
 const userMessage = document.getElementById("user-message");
 const adminStatus = document.getElementById("admin-status");
+const adminTabButtons = Array.from(document.querySelectorAll("[data-admin-tab-target]"));
+const adminTabPanels = Array.from(document.querySelectorAll("[data-admin-tab-panel]"));
+const adminTabNames = adminTabButtons.map((button) => button.dataset.adminTabTarget);
 
 function escapeHtml(value) {
   return window.HomelabSecAuth.escapeHtml(value);
@@ -67,13 +70,13 @@ function formatDate(value) {
 }
 
 function buildQuickLinks() {
-  const { protocol, hostname, origin } = window.location;
+  const { hostname, origin } = window.location;
   const links = [
     { label: "Dashboard", href: origin.replace("/admin.html", "/") },
-    { label: "API health", href: `${protocol}//${hostname}:8088/health` },
-    { label: "Prometheus", href: "http://127.0.0.1:9090" },
-    { label: "Grafana", href: "http://127.0.0.1:3001" },
-    { label: "Alertmanager", href: "http://127.0.0.1:9093" },
+    { label: "API health", href: `${origin}/api/health` },
+    { label: "Prometheus", href: "https://prometheus.home.robertbalm.com/" },
+    { label: "Grafana", href: "https://grafana.home.robertbalm.com/" },
+    { label: "Alertmanager", href: "https://alertmanager.home.robertbalm.com/" },
   ];
   if (hostname === "localhost" || hostname === "127.0.0.1") {
     links.push({ label: "Secure edge", href: "https://localhost:18443" });
@@ -152,6 +155,53 @@ function renderAdminStatus(status) {
   `;
 }
 
+function activateAdminTab(tabName, updateHash = true) {
+  const selected = adminTabNames.includes(tabName) ? tabName : "status";
+  for (const button of adminTabButtons) {
+    const isSelected = button.dataset.adminTabTarget === selected;
+    button.classList.toggle("is-active", isSelected);
+    button.setAttribute("aria-selected", isSelected ? "true" : "false");
+    button.tabIndex = isSelected ? 0 : -1;
+  }
+  for (const panel of adminTabPanels) {
+    const isSelected = panel.dataset.adminTabPanel === selected;
+    panel.classList.toggle("is-active", isSelected);
+    panel.hidden = !isSelected;
+  }
+  if (updateHash) {
+    history.replaceState(null, "", `#${selected}`);
+  }
+}
+
+function focusRelativeAdminTab(currentIndex, offset) {
+  const nextIndex = (currentIndex + offset + adminTabButtons.length) % adminTabButtons.length;
+  const nextButton = adminTabButtons[nextIndex];
+  nextButton.focus();
+  activateAdminTab(nextButton.dataset.adminTabTarget);
+}
+
+function initializeAdminTabs() {
+  for (const [index, button] of adminTabButtons.entries()) {
+    button.addEventListener("click", () => activateAdminTab(button.dataset.adminTabTarget));
+    button.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        focusRelativeAdminTab(index, 1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        focusRelativeAdminTab(index, -1);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        focusRelativeAdminTab(0, 0);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        focusRelativeAdminTab(adminTabButtons.length - 1, 0);
+      }
+    });
+  }
+  activateAdminTab((location.hash || "#status").slice(1), false);
+}
+
 async function loadAdminConsole() {
   const user = await window.HomelabSecAuth.requireUser({ admin: true });
   window.HomelabSecAuth.mountHeaderNav(document.getElementById("page-nav"), user, "admin");
@@ -221,6 +271,8 @@ createUserForm.addEventListener("submit", async (event) => {
     userMessage.textContent = `Failed to create user: ${error.message}`;
   }
 });
+
+initializeAdminTabs();
 
 loadAdminConsole().catch((error) => {
   adminStatus.innerHTML = `<div class="empty-state">Failed to load admin status: ${escapeHtml(error.message)}</div>`;

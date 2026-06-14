@@ -1,0 +1,24 @@
+
+route:
+  receiver: "null"
+  group_by: ["alertname", "job"]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 4h
+
+  routes:
+    - receiver: "delivery-validation"
+      matchers:
+        - alertname: "HomelabSecDeliveryValidation"
+
+
+receivers:
+  - name: "null"
+
+  - name: "delivery-validation"
+    webhook_configs:
+      - url: "http://host.containers.internal:19094/homelabsec-alert-validation"
+        send_resolved: true
+
+
+templates: []
