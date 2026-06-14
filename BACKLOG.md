@@ -32,29 +32,33 @@ Goal:
 
 Reference:
 - `docs/operations/homelab-secret-management-strategy.md`
-- `docs/operations/secret-management-runbook.md`
+- `docs/operations/vaultwarden-openbao-secret-management.md`
+- `docs/operations/vaultwarden-openbao-bootstrap-runbook.md`
 - `docs/operations/secret-inventory-template.md`
 - `secrets/README.md`
 
 Delivered so far:
-- installed Faye-side `age`, `sops`, and Bitwarden CLI tooling with Bitwarden CLI pointed at Bitwarden EU
-- generated Faye's initial SOPS age recipient and wired it into `.sops.yaml`
-- added an encrypted sample secret bundle, metadata-only inventory example, guardrail validator, and local env renderer
+- started the migration away from Git-hosted SOPS payloads
+- removed tracked SOPS config/encrypted payloads from the repo
+- added a zero-secret Git validator and expanded ignore rules for Vaultwarden/OpenBao data, exports, snapshots, tokens, and runtime files
+- added a Vaultwarden + OpenBao plan, bootstrap runbook, example compose stack, OpenBao config scaffold, and metadata-only inventory examples
 
 Deliver:
-- use Robert's existing Bitwarden EU account as the primary human/recovery vault and SOPS + age as the automation secret format
+- use Vaultwarden as the primary human/recovery vault
+- use OpenBao as the automation/service vault
+- enforce that GitHub contains no secrets, encrypted or otherwise
 - inventory high-value secrets by metadata only: owner, consumer, storage, rotation, recovery test, blast radius, and revocation path
-- migrate known high-value secrets out of ad-hoc `.env` files and loose key locations into Bitwarden records, SOPS-encrypted files, or documented local materialization steps
-- create and test encrypted backups for the Bitwarden/export recovery path, SOPS/age recovery material, backup repository passwords, and break-glass runbook
-- rotate old, broad, or unclear-provenance credentials in staged batches
+- migrate known high-value secrets out of ad-hoc `.env` files and loose key locations into Vaultwarden/OpenBao or documented local materialization steps
+- create and test encrypted backups for Vaultwarden, OpenBao snapshots/recovery material, backup repository passwords, and break-glass runbook
+- rotate old, broad, unclear-provenance, or previously Git-encrypted credentials in staged batches
 - add HomelabSec posture checks later without collecting raw secret values
 
 Safety rules:
-- never put plaintext private keys, tokens, passwords, seeds, macaroons, backup repository passwords, rendered `.env` files, or vault exports in GitHub, backlog files, dashboards, alerts, logs, or Telegram
+- never put plaintext or encrypted private keys, tokens, passwords, seeds, macaroons, backup repository passwords, rendered `.env` files, vault exports, OpenBao snapshots, unseal/recovery keys, or vault tokens in GitHub, backlog files, dashboards, alerts, logs, or Telegram
 - report inventory coverage, freshness, rotation due dates, and recovery-test status only
 
 Next action:
-- with Robert present, login/unlock Bitwarden EU, create recovery records for Faye's SOPS age identity, and start migrating the first real HomelabSec runtime secrets into encrypted SOPS bundles.
+- deploy the Vaultwarden/OpenBao foundations on the approved homelab workload host, then initialize/administer them with Robert present for bootstrap secrets.
 
 ### Operational P0: Self-Hosted Git Migration Programme
 Priority: `P0`
